@@ -86,7 +86,7 @@ class MainDriver:
                             default=config.Source.default, help="Model source type ['seedot', 'onnx', 'tf']\
                            (Default: 'seedot')")
         parser.add_argument("-sf", "--max-scale-factor", type=int,
-                            metavar='', help="Use the old max-scale mechanism of SeeDot's PLDI’19 paper to determine the scales (If not specified then it will be inferred from data)")
+                            metavar='', help="Use the old max-scale mechanism of SeeDot's PLDI'19 paper to determine the scales (If not specified then it will be inferred from data)")
         parser.add_argument("-l", "--log", choices=config.Log.all,
                             default=config.Log.default, metavar='', help="Logging level (in increasing order)\
                              ['error', 'critical', 'warning', 'info', 'debug'] (Default: 'error')")
