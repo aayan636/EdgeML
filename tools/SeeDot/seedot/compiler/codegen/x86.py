@@ -75,7 +75,7 @@ class X86(CodegenBase):
         self.out.printf('#include "profile.h"\n', indent=True)
         self.out.printf('#include "library_%s.h"\n' %
                         (getEncoding()), indent=True)
-        self.out.printf('#include "model_%s.h"\n' %
+        self.out.printf('#include "../../temp/Predictor/model_%s.h"\n' %
                         (getEncoding()), indent=True)
         self.out.printf('#include "vars_%s.h"\n\n' %
                         (getEncoding()), indent=True)

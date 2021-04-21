@@ -184,7 +184,7 @@ class Compiler:
     def readDataDrivenScales(self):
         tempScales = {}
         error = 0.01
-        with open('temp/Predictor/dump.profile', 'r') as f:
+        with open(config.tempdir + '/Predictor/dump.profile', 'r') as f:
             for line in f:
                 entries = line.strip().split(",")
                 var, m, M = entries

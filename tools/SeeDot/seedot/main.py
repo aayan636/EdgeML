@@ -14,6 +14,8 @@ import traceback
 from tqdm import tqdm
 import numpy as np
 
+from mpi4py import MPI
+
 from seedot.compiler.converter.converter import Converter
 
 import seedot.config as config
@@ -29,9 +31,10 @@ detailed explanation of how the various modules interact with each other.
 
 class Main:
 
-    def __init__(self, algo, encoding, target, trainingFile, testingFile, modelDir, sf, metric, dataset, numOutputs, source):
+    def __init__(self, algo, encoding, target, trainingFile, testingFile, modelDir, sf, metric, dataset, numOutputs, source, mpi_rank, mpi_size):
         self.algo, self.encoding, self.target = algo, encoding, target
         self.trainingFile, self.testingFile, self.modelDir = trainingFile, testingFile, modelDir
+        self.mpi_rank, self.mpi_size = mpi_rank, mpi_size
         self.sf = sf
             # MaxScale factor. Used in the original version of SeeDot.
             # Refer to PLDI'19 paper: maxscale parameter P.
@@ -93,15 +96,22 @@ class Main:
 
     # This function is invoked right at the beginning for moving around files into the working directory.
     def setup(self):
+        if self.mpi_rank == 0:
+            curr_dir = os.path.dirname(os.path.realpath(__file__))
+            copy_tree(os.path.join(curr_dir, "Predictor"), os.path.join(config.globalTempdir, "Predictor"))
         curr_dir = os.path.dirname(os.path.realpath(__file__))
         copy_tree(os.path.join(curr_dir, "Predictor"), os.path.join(config.tempdir, "Predictor"))
 
+        MPI.COMM_WORLD.Barrier()
+
         if self.target == config.Target.arduino:
+            assert False, "Not implemented for MPI"
             for fileName in ["arduino.ino", "config.h", "predict.h"]:
                 srcFile = os.path.join(curr_dir, "arduino", fileName)
                 destFile = os.path.join(config.outdir, fileName)
                 shutil.copyfile(srcFile, destFile)
         elif self.target == config.Target.m3:
+            assert False, "Not implemented for MPI"
             for fileName in ["datatypes.h", "mbconv.h", "utils.h"]:
                 srcFile = os.path.join(curr_dir, "..", "..", "..",  "c_reference", "include", "quantized_%s"%fileName)
                 destFile = os.path.join(config.outdir, "quantized_%s"%fileName)
@@ -212,38 +222,45 @@ class Main:
         Util.getLogger().debug("Generating input files for %s %s dataset..." %
               (encoding, datasetType))
 
-        # Create output dirs.
-        if target == config.Target.arduino:
-            outputDir = os.path.join(config.outdir, "input")
-            datasetOutputDir = outputDir
-        elif target == config.Target.m3:
-            outputDir = os.path.join(config.outdir, "input")
-            datasetOutputDir = outputDir
-        elif target == config.Target.x86:
-            outputDir = os.path.join(config.tempdir, "Predictor")
-            datasetOutputDir = os.path.join(config.tempdir, "Predictor", "input")
+        if self.mpi_rank == 0:
+
+            # Create output dirs.
+            if target == config.Target.arduino:
+                outputDir = os.path.join(config.outdir, "input")
+                datasetOutputDir = outputDir
+            elif target == config.Target.m3:
+                outputDir = os.path.join(config.outdir, "input")
+                datasetOutputDir = outputDir
+            elif target == config.Target.x86:
+                outputDir = os.path.join(config.globalTempdir, "Predictor")
+                datasetOutputDir = os.path.join(config.globalTempdir, "Predictor", "input")
+            else:
+                assert False
+
+            os.makedirs(datasetOutputDir, exist_ok=True)
+            os.makedirs(outputDir, exist_ok=True)
+
+            inputFile = self.get_input_file()
+
+            try:
+                varsForBitwidth = dict(varsForBitwidth)
+                for var in demotedVarsOffsets:
+                    varsForBitwidth[var] = config.wordLength // 2
+                obj = Converter(self.algo, encoding, datasetType, target, self.source,
+                                datasetOutputDir, outputDir, varsForBitwidth, self.allScales, self.numOutputs, self.biasShifts, self.scaleForY if hasattr(self, "scaleForY") else None)
+                obj.setInput(inputFile, self.modelDir,
+                             self.trainingFile, self.testingFile)
+                obj.run()
+                if encoding == config.Encoding.floatt:
+                    if len(obj.sparseMatrixSizes) > 0:
+                        assert False, "Not implemented for MPI"
+                    self.sparseMatrixSizes = obj.sparseMatrixSizes
+            except Exception as e:
+                traceback.print_exc()
+                return False
         else:
-            assert False
-
-        os.makedirs(datasetOutputDir, exist_ok=True)
-        os.makedirs(outputDir, exist_ok=True)
-
-        inputFile = self.get_input_file()
-
-        try:
-            varsForBitwidth = dict(varsForBitwidth)
-            for var in demotedVarsOffsets:
-                varsForBitwidth[var] = config.wordLength // 2
-            obj = Converter(self.algo, encoding, datasetType, target, self.source,
-                            datasetOutputDir, outputDir, varsForBitwidth, self.allScales, self.numOutputs, self.biasShifts, self.scaleForY if hasattr(self, "scaleForY") else None)
-            obj.setInput(inputFile, self.modelDir,
-                         self.trainingFile, self.testingFile)
-            obj.run()
-            if encoding == config.Encoding.floatt:
-                self.sparseMatrixSizes = obj.sparseMatrixSizes
-        except Exception as e:
-            traceback.print_exc()
-            return False
+            pass
+        MPI.COMM_WORLD.Barrier()
 
         Util.getLogger().debug("Done")
         return True
@@ -374,6 +391,7 @@ class Main:
                 try:
                     firstCompileSuccess = self.partialCompile(config.Encoding.fixed, config.Target.x86, highestValidScale, True, None, 0, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
                 except:
+                    traceback.print_exc()
                     firstCompileSuccess = False
 
                 if firstCompileSuccess:
@@ -704,6 +722,7 @@ class Main:
 
     # Generate code for Arduino.
     def compileFixedForTarget(self):
+        assert False, "Not implemented for MPI"
         print("------------------------------")
         print("Generating code for %s..." % (self.target))
         print("------------------------------\n")
@@ -804,6 +823,7 @@ class Main:
 
     # Floating point x86 code.
     def runForFloat(self):
+        assert False, "Not implemented for MPI"
         Util.getLogger().info("---------------------------")
         Util.getLogger().info("Executing for X86 target...")
         Util.getLogger().info("---------------------------\n")

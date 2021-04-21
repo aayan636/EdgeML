@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT license.
 
+from mpi4py import MPI
+
 import argparse
 import csv
 import datetime
@@ -57,7 +59,7 @@ class Dataset:
 
 class MainDriver:
 
-    def parseArgs(self):
+    def parseArgs(self, mpi_rank, mpi_size):
         parser = argparse.ArgumentParser()
 
         parser.add_argument("-a", "--algo", choices=config.Algo.all,
@@ -115,13 +117,21 @@ class MainDriver:
             self.args.metric = [self.args.metric]
 
         if self.args.tempdir is not None:
+            assert False, "Not Handled in MPI Version"
             assert os.path.isdir(
                 self.args.tempdir), "Scratch directory doesn't exist"
             config.tempdir = self.args.tempdir
         else:
-            config.tempdir = "temp"
-            if os.path.exists(config.tempdir):
-                shutil.rmtree(config.tempdir)
+            config.globalTempdir = "temp"
+            config.tempdir = "temp%d_%d" % (mpi_rank, mpi_size)
+            if mpi_rank == 0:
+                for file in os.listdir("./"):
+                    if os.path.isdir(file):
+                        if file.startswith("temp"):
+                            shutil.rmtree(file)
+            if mpi_rank == 0:
+                os.makedirs(config.globalTempdir)
+            MPI.COMM_WORLD.Barrier()
             os.makedirs(config.tempdir)
 
         if self.args.outdir is not None:
@@ -154,16 +164,16 @@ class MainDriver:
     def setLogLevel(self):
         logging.basicConfig(level=os.environ.get("LOGLEVEL", self.args.log.upper()))
 
-    def run(self):
+    def run(self, mpi_rank, mpi_size):
         self.setLogLevel()
 
         if util.windows():
             self.checkMSBuildPath()
 
         self.setGlobalFlags()
-        self.runMainDriver()
+        self.runMainDriver(mpi_rank, mpi_size)
 
-    def runMainDriver(self):
+    def runMainDriver(self, mpi_rank, mpi_size):
         legacy_scales = self.loadScalesFile()
 
         for iter in product(self.args.algo, self.args.encoding, self.args.dataset, self.args.target, self.args.metric, [16]):
@@ -221,7 +231,7 @@ class MainDriver:
             numOutputs = self.args.numOutputs
 
             obj = main.Main(algo, encoding, target, trainingInput,
-                            testingInput, modelDir, sf, metric, dataset, numOutputs, self.args.source)
+                            testingInput, modelDir, sf, metric, dataset, numOutputs, self.args.source, mpi_rank, mpi_size)
             obj.run()
 
             acc = obj.testingAccuracy
@@ -264,6 +274,8 @@ class MainDriver:
         return scales
 
 if __name__ == "__main__":
+    mpi_rank = MPI.COMM_WORLD.Get_rank()
+    mpi_size = MPI.COMM_WORLD.Get_size()
     obj = MainDriver()
-    obj.parseArgs()
-    obj.run()
+    obj.parseArgs(mpi_rank, mpi_size)
+    obj.run(mpi_rank, mpi_size)

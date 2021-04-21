@@ -180,7 +180,7 @@ int main(int argc, char* argv[]) {
 	int numOutputs = atoi(argv[4]);
 
 	// Reading the dataset.
-	string inputDir = "input/";
+	string inputDir = "../../temp/Predictor/input/";
 
 	ifstream featuresFile(inputDir + "X.csv");
 	ifstream lablesFile(inputDir + "Y.csv");

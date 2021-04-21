@@ -96,6 +96,7 @@ class Predictor:
         Builds using the Predictor.vcxproj project file and creates the executable.
         The target platform is currently set to x64.
         '''
+        assert False, "Not implemented for MPI"
         Util.getLogger().debug("Build...")
 
         projFile = "Predictor.vcxproj"

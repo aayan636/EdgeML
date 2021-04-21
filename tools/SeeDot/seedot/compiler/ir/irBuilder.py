@@ -4032,6 +4032,9 @@ class IRBuilder(ASTVisitor):
             else:
                 return config.wordLength, self.intermediateVarScales[varName]
         else:
+            print(self.varName)
+            print(self.varScales)
+            print(self.intermediateVarScales)
             assert False, "No root found"
 
     # Update the last instruction where a variable was active / used.
