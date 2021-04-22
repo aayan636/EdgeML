@@ -116,6 +116,8 @@ class MainDriver:
         if not isinstance(self.args.metric, list):
             self.args.metric = [self.args.metric]
 
+        assert self.args.target == ['x86'], "Not implemented in MPI "
+
         if self.args.tempdir is not None:
             assert False, "Not Handled in MPI Version"
             assert os.path.isdir(

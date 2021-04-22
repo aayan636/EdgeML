@@ -13,6 +13,7 @@ import tempfile
 import traceback
 from tqdm import tqdm
 import numpy as np
+import time
 
 from mpi4py import MPI
 
@@ -27,7 +28,21 @@ import seedot.util as Util
 Overall compiler logic is maintained in this file. Please refer to architecture.md for a 
 detailed explanation of how the various modules interact with each other.
 '''
+def gatherMap(a):
+    wholeMap = {}
+    a = MPI.COMM_WORLD.allgather(a)
+    for mp in a:
+        for key in mp:
+            wholeMap[key] = mp[key]
+    return wholeMap
 
+def gatherList(a):
+    wholeList = []
+    a = MPI.COMM_WORLD.allgather(a)
+    for lst in a:
+        for entry in lst:
+            wholeList.append(entry)
+    return wholeList
 
 class Main:
 
@@ -417,6 +432,8 @@ class Main:
             # Ignored.
             self.partialCompile(config.Encoding.fixed, config.Target.x86, lowestValidScale, True, None, -1, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
 
+            startTime = time.time()
+
             print("Stage II Exploration: Determining scale for all non-\'X\' variables...")
             # The iterator logic is as follows:
             # Search begins when the first valid scaling factor is found (runOnce returns True).
@@ -424,9 +441,14 @@ class Main:
             # This is the window where valid scaling factors exist and we
             # select the one with the best accuracy.
             numCodes = highestValidScale - lowestValidScale + 1
+
+            lowestValidScaleProcess = ((numCodes * self.mpi_rank) // self.mpi_size) + lowestValidScale
+            highestValidScaleProcess = ((numCodes * (self.mpi_rank + 1)) // self.mpi_size) + lowestValidScale - 1
+            numCodesProcess = highestValidScaleProcess - lowestValidScaleProcess + 1
+            
             codeId = 0
             codeIdToScaleFactorMap = {}
-            for i in tqdm(range(highestValidScale, lowestValidScale - 1, -1)):
+            for i in tqdm(range(highestValidScaleProcess, lowestValidScaleProcess - 1, -1)):
                 if config.ddsEnabled:
                     Util.getLogger().debug("Testing with DDS and scale of X as " + str(i) + "\n")
                 else:
@@ -435,7 +457,7 @@ class Main:
                 codeId += 1
                 try:
                     compiled = self.partialCompile(
-                        config.Encoding.fixed, config.Target.x86, i, False, codeId, -1 if codeId != numCodes else codeId, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
+                        config.Encoding.fixed, config.Target.x86, i, False, codeId, -1 if codeId != numCodesProcess else codeId, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
                 except: # If some code in the middle fails to compile.
                     codeId -=1
                     continue
@@ -449,6 +471,21 @@ class Main:
             if exit == True or res == False:
                 return False
 
+            self.accuracy = gatherMap(self.accuracy)
+            self.scalesForY = gatherMap(self.scalesForY)
+            self.scalesForX = gatherMap(self.scalesForX)
+            self.varDemoteDetails = gatherList(self.varDemoteDetails)
+
+            def getMetricValue(a):
+                if self.metric == config.Metric.accuracy:
+                    return (a[1][0], -a[1][1], -a[1][2])
+                elif self.metric == config.Metric.disagreements:
+                    return (-a[1][1], -a[1][2], a[1][0])
+                elif self.metric == config.Metric.reducedDisagreements:
+                    return (-a[1][2], -a[1][1], a[1][0])
+            self.varDemoteDetails.sort(key=getMetricValue, reverse=True)
+
+
             Util.getLogger().info("\nSearch completed\n")
             Util.getLogger().info("----------------------------------------------\n\n")
             Util.getLogger().info("Best performing scaling factors with accuracy, disagreement, reduced disagreement:")
@@ -460,7 +497,11 @@ class Main:
                 Util.getLogger().info("No difference in iteration %d Stage 2 and iteration %d Stage 1. Stopping search\n"%(fixedPointCounter-1, fixedPointCounter))
                 break
 
-            if config.vbwEnabled:
+            endTime = time.time()
+
+            print("Stage II finished in time: %f seconds" % (endTime - startTime))
+
+            if False: #config.vbwEnabled:
                 # Stage III exploration.
                 print("Stage III Exploration: Demoting variables one at a time...")
 
