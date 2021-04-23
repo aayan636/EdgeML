@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 CC=g++
-CFLAGS=-Wall -Wno-narrowing -p -g -fPIC -O3 -std=c++11 -pthread
+CFLAGS=-w -Wno-narrowing -p -g -fPIC -O3 -std=c++11 -pthread
 
 PREDICTOR_INCLUDES=datatypes.h \
                    library_fixed.h \
@@ -11,8 +11,8 @@ PREDICTOR_INCLUDES=datatypes.h \
                    model_float.h \
                    predictors.h \
                    profile.h \
-                   vars_fixed.h \
-                   vars_float.h \
+                   #vars_fixed.h \
+                   #vars_float.h \
 
 PREDICTOR_OBJS=debug.o \
                library_fixed.o \

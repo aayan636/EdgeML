@@ -77,8 +77,8 @@ class X86(CodegenBase):
                         (getEncoding()), indent=True)
         self.out.printf('#include "../../temp/Predictor/model_%s.h"\n' %
                         (getEncoding()), indent=True)
-        self.out.printf('#include "vars_%s.h"\n\n' %
-                        (getEncoding()), indent=True)
+        # self.out.printf('#include "vars_%s.h"\n\n' %
+        #                 (getEncoding()), indent=True)
         self.out.printf('using namespace std;\n', indent=True)
         self.out.printf('using namespace seedot_%s;\n' %
                         (getEncoding()), indent=True)

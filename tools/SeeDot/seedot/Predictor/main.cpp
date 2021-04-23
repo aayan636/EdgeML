@@ -22,6 +22,12 @@ using namespace std;
  * and translates them into integers, and then puts them through multiple generated inference codes and evaluates each result.
  */
 
+int scaleForX;
+int scaleForY;
+
+int *scalesForX;
+int *scalesForY;
+
 enum Version
 {
 	Fixed,
@@ -178,6 +184,21 @@ int main(int argc, char* argv[]) {
 	string problemTypeStr = argv[3];
 
 	int numOutputs = atoi(argv[4]);
+
+	scaleForX = atoi(argv[5]);
+	scaleForY = atoi(argv[6]);
+
+	int numScales = atoi(argv[7]);
+
+	scalesForX = new int[numScales];
+	scalesForY = new int[numScales];
+
+	for (int i = 0; i < numScales; i++) {
+		scalesForX[i] = atoi(argv[8 + i]);
+	}
+	for (int i = 0; i < numScales; i++) {
+		scalesForY[i] = atoi(argv[numScales + 8 + i]);
+	}
 
 	// Reading the dataset.
 	string inputDir = "../../temp/Predictor/input/";

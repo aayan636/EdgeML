@@ -29,16 +29,16 @@ Overall compiler logic is maintained in this file. Please refer to architecture.
 detailed explanation of how the various modules interact with each other.
 '''
 def gatherMap(a):
-    wholeMap = {}
     a = MPI.COMM_WORLD.allgather(a)
+    wholeMap = {}
     for mp in a:
         for key in mp:
             wholeMap[key] = mp[key]
     return wholeMap
 
 def gatherList(a):
-    wholeList = []
     a = MPI.COMM_WORLD.allgather(a)
+    wholeList = []
     for lst in a:
         for entry in lst:
             wholeList.append(entry)

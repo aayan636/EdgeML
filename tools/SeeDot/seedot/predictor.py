@@ -39,57 +39,58 @@ class Predictor:
     # Depending on the parameters set in config.py, util.py, this method generates a header file datatypes.h
     # which controls the execution of the generated code.
     def genHeaderFile(self):
-        with open("datatypes.h", 'w') as file:
-            file.write("#pragma once\n\n")
+        if self.encoding == config.Encoding.floatt:
+            with open("datatypes.h", 'w') as file:
+                file.write("#pragma once\n\n")
 
-            if config.wordLength == 8:
-                file.write("#define INT8\n")
-                file.write("typedef int8_t MYINT;\n\n")
-            elif config.wordLength == 16:
-                file.write("#define INT16\n")
-                file.write("typedef int16_t MYINT;\n\n")
-            elif config.wordLength == 32:
-                file.write("#define INT32\n")
-                file.write("typedef int32_t MYINT;\n\n")
+                if config.wordLength == 8:
+                    file.write("#define INT8\n")
+                    file.write("typedef int8_t MYINT;\n\n")
+                elif config.wordLength == 16:
+                    file.write("#define INT16\n")
+                    file.write("typedef int16_t MYINT;\n\n")
+                elif config.wordLength == 32:
+                    file.write("#define INT32\n")
+                    file.write("typedef int32_t MYINT;\n\n")
 
-            file.write("typedef int16_t MYITE;\n")
-            file.write("typedef uint16_t MYUINT;\n\n")
+                file.write("typedef int16_t MYITE;\n")
+                file.write("typedef uint16_t MYUINT;\n\n")
 
-            file.write("const int scaleForX = %d;\n\n" % (self.scaleForX))
-            if len(self.scalesForX) > 0:
-                assert len(self.scalesForX) == max(list(self.scalesForX.keys())), "Malformed array scalesForX"
-                file.write("const int scalesForX[%d] = {%s};\n" % (len(self.scalesForX), ', '.join([str(self.scalesForX[i+1]) for i in range(len(self.scalesForX))])))
-            else:
-                file.write("const int scalesForX[1] = {100}; //junk, needed for compilation\n")
+                # file.write("const int scaleForX = %d;\n\n" % (self.scaleForX))
+                # if len(self.scalesForX) > 0:
+                #     assert len(self.scalesForX) == max(list(self.scalesForX.keys())), "Malformed array scalesForX"
+                #     file.write("const int scalesForX[%d] = {%s};\n" % (len(self.scalesForX), ', '.join([str(self.scalesForX[i+1]) for i in range(len(self.scalesForX))])))
+                # else:
+                #     file.write("const int scalesForX[1] = {100}; //junk, needed for compilation\n")
 
-            file.write("const int scaleForY = %d;\n\n" % (self.scaleForY))
-            if len(self.scalesForY) > 0:
-                assert len(self.scalesForY) == max(list(self.scalesForY.keys())), "Malformed array scalesForY"
-                file.write("const int scalesForY[%d] = {%s};\n" % (len(self.scalesForY), ', '.join([str(self.scalesForY[i+1]) for i in range(len(self.scalesForY))])))
-            else:
-                file.write("const int scalesForY[1] = {100}; //junk, needed for compilation\n")
+                # file.write("const int scaleForY = %d;\n\n" % (self.scaleForY))
+                # if len(self.scalesForY) > 0:
+                #     assert len(self.scalesForY) == max(list(self.scalesForY.keys())), "Malformed array scalesForY"
+                #     file.write("const int scalesForY[%d] = {%s};\n" % (len(self.scalesForY), ', '.join([str(self.scalesForY[i+1]) for i in range(len(self.scalesForY))])))
+                # else:
+                #     file.write("const int scalesForY[1] = {100}; //junk, needed for compilation\n")
 
-            if Util.debugMode():
-                file.write("const bool debugMode = true;\n")
-            else:
-                file.write("const bool debugMode = false;\n")
+                if Util.debugMode():
+                    file.write("const bool debugMode = true;\n")
+                else:
+                    file.write("const bool debugMode = false;\n")
 
-            file.write("const bool logProgramOutput = true;\n")
+                file.write("const bool logProgramOutput = true;\n")
 
-            if Util.isSaturate():
-                file.write("#define SATURATE\n")
-            else:
-                file.write("//#define SATURATE\n")
+                if Util.isSaturate():
+                    file.write("#define SATURATE\n")
+                else:
+                    file.write("//#define SATURATE\n")
 
-            if Util.isfastApprox():
-                file.write("#define FASTAPPROX\n")
-            else:
-                file.write("//#define FASTAPPROX\n")
+                if Util.isfastApprox():
+                    file.write("#define FASTAPPROX\n")
+                else:
+                    file.write("//#define FASTAPPROX\n")
 
-            if Util.useMathExp() or (Util.useNewTableExp()):
-                file.write("#define FLOATEXP\n")
-            else:
-                file.write("//#define FLOATEXP\n")
+                if Util.useMathExp() or (Util.useNewTableExp()):
+                    file.write("#define FLOATEXP\n")
+                else:
+                    file.write("//#define FLOATEXP\n")
 
     def buildForWindows(self):
         '''
@@ -141,6 +142,7 @@ class Predictor:
         Invokes the executable with arguments.
         '''
         Util.getLogger().debug("Execution...")
+        assert False, "Not implemented for MPI"
 
         exeFile = os.path.join("x64", "Release", "Predictor.exe")
         args = [exeFile, self.encoding, self.datasetType, self.problemType, str(self.numOutputs)]
@@ -157,11 +159,35 @@ class Predictor:
             execMap = self.readStatsFile()
             return execMap
 
+            # file.write("const int scaleForX = %d;\n\n" % (self.scaleForX))
+            # if len(self.scalesForX) > 0:
+            #     assert len(self.scalesForX) == max(list(self.scalesForX.keys())), "Malformed array scalesForX"
+            #     file.write("const int scalesForX[%d] = {%s};\n" % (len(self.scalesForX), ', '.join([str(self.scalesForX[i+1]) for i in range(len(self.scalesForX))])))
+            # else:
+            #     file.write("const int scalesForX[1] = {100}; //junk, needed for compilation\n")
+
+            # file.write("const int scaleForY = %d;\n\n" % (self.scaleForY))
+            # if len(self.scalesForY) > 0:
+            #     assert len(self.scalesForY) == max(list(self.scalesForY.keys())), "Malformed array scalesForY"
+            #     file.write("const int scalesForY[%d] = {%s};\n" % (len(self.scalesForY), ', '.join([str(self.scalesForY[i+1]) for i in range(len(self.scalesForY))])))
+            # else:
+            #     file.write("const int scalesForY[1] = {100}; //junk, needed for compilation\n")
+
     def executeForLinux(self):
         Util.getLogger().debug("Execution...")
 
         exeFile = os.path.join("./Predictor")
-        args = [exeFile, self.encoding, self.datasetType, self.problemType, str(self.numOutputs)]
+        args = [exeFile, self.encoding, self.datasetType, self.problemType, str(self.numOutputs), str(self.scaleForX), str(self.scaleForY)]
+
+        if len(self.scalesForX) > 0:
+            assert len(self.scalesForX) == max(list(self.scalesForX.keys())), "Malformed array scalesForX"
+        if len(self.scalesForY) > 0:
+            assert len(self.scalesForY) == max(list(self.scalesForY.keys())), "Malformed array scalesForY"
+        assert len(self.scalesForY) == len(self.scalesForX), "Equal number of scalesForX and scalesForY mandatory"
+
+        args = args + [str(len(self.scalesForY))]
+        args = args + [str(self.scalesForX[i+1]) for i in range(len(self.scalesForX))]
+        args = args + [str(self.scalesForY[i+1]) for i in range(len(self.scalesForY))]
 
         logFile = os.path.join(self.outputDir, "exec.txt")
         with open(logFile, 'w') as file:
