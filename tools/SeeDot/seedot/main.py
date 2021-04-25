@@ -358,14 +358,25 @@ class Main:
                 offsetToCodeId = demotedVarsToOffsetToCodeId[demotedVars]
                 Util.getLogger().debug("Demoted vars: %s\n" % str(demotedVars))
 
-                x = [(i, execMap[str(offsetToCodeId[i])]) for i in offsetToCodeId]
-                x.sort(key=getMetricValue, reverse=True)
-                allVars.append(((demotedVars, x[0][0]), x[0][1]))
+                allVars += [((demotedVars, i), execMap[str(offsetToCodeId[i])]) for i in offsetToCodeId]  
+                # x.sort(key=getMetricValue, reverse=True)
+                # allVars.append(((demotedVars, x[0][0]), x[0][1]))
 
                 for offset in offsetToCodeId:
                     codeId = offsetToCodeId[offset]
                     Util.getLogger().debug("Offset %d (Code ID %d): Accuracy %.3f%%, Disagreement Count %d, Reduced Disagreement Count %d\n" %(offset, codeId, execMap[str(codeId)][0], execMap[str(codeId)][1], execMap[str(codeId)][2]))
-            self.varDemoteDetails += allVars
+            
+            allVars = gatherList(allVars)   
+            allVarsMap = {}       
+            allVarsOptimum = []    
+            for ((varz, ofst), execDetails) in allVars:
+                if varz not in allVarsMap:
+                    allVarsMap[varz] = []
+                allVarsMap[varz].append((ofst, execDetails))
+            for varz in allVarsMap:
+                allVarsMap[varz].sort(key=getMetricValue, reverse=True)
+                allVarsOptimum.append(((varz, allVarsMap[varz][0][0]), allVarsMap[varz][0][1]))
+            self.varDemoteDetails += allVarsOptimum
             # For the sec
             if not doNotSort:
                 self.varDemoteDetails.sort(key=getMetricValue, reverse=True)
@@ -501,7 +512,8 @@ class Main:
 
             print("Stage II finished in time: %f seconds" % (endTime - startTime))
 
-            if False: #config.vbwEnabled:
+            if config.vbwEnabled:
+                startTime = time.time()
                 # Stage III exploration.
                 print("Stage III Exploration: Demoting variables one at a time...")
 
@@ -515,14 +527,15 @@ class Main:
                 # demoted, it is assigned a scale given by :
                 # demoted Scale = self.allScales[var] + 8 - offset
 
-                attemptToDemote = [var for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList)]
-                numCodes = config.offsetsPerDemotedVariable * len(attemptToDemote) + ((9 - config.offsetsPerDemotedVariable) if 'X' in attemptToDemote else 0)
+                attemptToDemote = [(var, ofst) for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList) for ofst in range(0, -config.offsetsPerDemotedVariable, -1) if (var != 'X')] + [(var, ofst) for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList) for ofst in range(0, -9, -1) if (var == 'X')]
+
+                #//numCodes = config.offsetsPerDemotedVariable * len(attemptToDemote) + ((9 - config.offsetsPerDemotedVariable) if 'X' in attemptToDemote else 0)
                 # 9 offsets tried for X while 'offsetsPerDemotedVariable' tried for other variables.
 
                 # We approximately club batchSize number of codes in one generated C++ code, so that one generated code does
                 # not become too large.
-                batchSize = int(np.ceil(50 / np.ceil(len(attemptToDemote) / 50)))
-                redBatchSize = np.max((batchSize, 16)) / config.offsetsPerDemotedVariable
+                batchSize = int(np.ceil(50 / np.ceil(len(attemptToDemote) / 150)))
+                redBatchSize = np.max((batchSize, 16)) #/ config.offsetsPerDemotedVariable
 
                 totalSize = len(attemptToDemote)
                 numBatches = int(np.ceil(totalSize / redBatchSize))
@@ -534,14 +547,14 @@ class Main:
                     firstVarIndex = (totalSize * i) // numBatches
                     lastVarIndex = (totalSize * (i + 1)) // numBatches
                     demoteBatch = [attemptToDemote[i] for i in range(firstVarIndex, lastVarIndex)]
-                    numCodes = config.offsetsPerDemotedVariable * len(demoteBatch) + ((9 - config.offsetsPerDemotedVariable) if 'X' in demoteBatch else 0)
+                    numCodes = len(demoteBatch)
                     # 9 offsets tried for X while 'config.offsetsPerDemotedVariable' tried for other variables.
 
                     self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, -1 if len(demoteBatch) > 0 else 0, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
                     codeId = 0
                     contentToCodeIdMap = {}
 
-                    for demoteVar in demoteBatch:
+                    for (demoteVar, demOffset) in demoteBatch:
                         # For each variable being demoted, we populate some variables containing information regarding demoted variable.
                         newbitwidths = dict(self.variableToBitwidthMap)
                         newbitwidths[demoteVar] = config.wordLength // 2
@@ -556,23 +569,33 @@ class Main:
 
                         contentToCodeIdMap[tuple(demotedVarsList)] = {}
                         # We try out multiple offsets for each variable to find best scale assignment for each variable.
-                        for demOffset in (range(0, -config.offsetsPerDemotedVariable, -1) if demoteVar != 'X' else range(0, -9, -1)):
-                            codeId += 1
-                            for k in demotedVarsList:
-                                if k not in self.demotedVarsList:
-                                    demotedVarsOffsets[k] = demOffset
-                            contentToCodeIdMap[tuple(demotedVarsList)][demOffset] = codeId
-                            compiled = self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, False, codeId, -1 if codeId != numCodes else codeId, dict(newbitwidths), list(demotedVarsList), dict(demotedVarsOffsets))
-                            if compiled == False:
-                                Util.getLogger().error("Variable bitwidth exploration resulted in a compilation error\n")
-                                return False
+                        codeId += 1
+                        for k in demotedVarsList:
+                            if k not in self.demotedVarsList:
+                                demotedVarsOffsets[k] = demOffset
+                        contentToCodeIdMap[tuple(demotedVarsList)][demOffset] = codeId
+                        compiled = self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, False, codeId, -1 if codeId != numCodes else codeId, dict(newbitwidths), list(demotedVarsList), dict(demotedVarsOffsets))
+                        if compiled == False:
+                            Util.getLogger().error("Variable bitwidth exploration resulted in a compilation error\n")
+                            return False
 
                     res, exit = self.runAll(config.Encoding.fixed, config.DatasetType.training, None, contentToCodeIdMap)
+
+                    self.accuracy = gatherMap(self.accuracy)
+                    self.scalesForY = gatherMap(self.scalesForY)
+                    self.scalesForX = gatherMap(self.scalesForX)
                 
+                endTime = time.time()
+
+                print("Stage III finished in time: %f seconds" % (endTime - startTime))
+
+
+                startTime = time.time()
+
                 print("Stage IV Exploration: Cumulatively demoting variables...")
                 # Stage IV exploration.
                 # Again, we compute only a limited number of inference codes per generated C++ so as to not bloat up the memory usage of the compiler.
-                redBatchSize *= config.offsetsPerDemotedVariable
+                # redBatchSize *= config.offsetsPerDemotedVariable
                 totalSize = len(self.varDemoteDetails)
                 numBatches = int(np.ceil(totalSize / redBatchSize))
 
@@ -651,6 +674,9 @@ class Main:
 
                 self.demotedVarsList = [i for i in okToDemote] + [i for i in self.demotedVarsList]
                 self.demotedVarsOffsets.update(demotedVarsListToOffsets.get(okToDemote, {}))
+
+                endTime = time.time()
+                print("Stage IV finished in time: %f seconds" % (endTime - startTime))
 
                 if acceptedAcc != lastStageAcc:
                     lastStageAcc = acceptedAcc
