@@ -365,8 +365,9 @@ class Main:
                 for offset in offsetToCodeId:
                     codeId = offsetToCodeId[offset]
                     Util.getLogger().debug("Offset %d (Code ID %d): Accuracy %.3f%%, Disagreement Count %d, Reduced Disagreement Count %d\n" %(offset, codeId, execMap[str(codeId)][0], execMap[str(codeId)][1], execMap[str(codeId)][2]))
-            
+            # print(demotedVarsToOffsetToCodeId)
             allVars = gatherList(allVars)   
+            # print(allVars)
             allVarsMap = {}       
             allVarsOptimum = []    
             for ((varz, ofst), execDetails) in allVars:
@@ -377,6 +378,7 @@ class Main:
                 allVarsMap[varz].sort(key=getMetricValue, reverse=True)
                 allVarsOptimum.append(((varz, allVarsMap[varz][0][0]), allVarsMap[varz][0][1]))
             self.varDemoteDetails += allVarsOptimum
+            # print(self.varDemoteDetails)
             # For the sec
             if not doNotSort:
                 self.varDemoteDetails.sort(key=getMetricValue, reverse=True)
@@ -527,7 +529,11 @@ class Main:
                 # demoted, it is assigned a scale given by :
                 # demoted Scale = self.allScales[var] + 8 - offset
 
-                attemptToDemote = [(var, ofst) for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList) for ofst in range(0, -config.offsetsPerDemotedVariable, -1) if (var != 'X')] + [(var, ofst) for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList) for ofst in range(0, -9, -1) if (var == 'X')]
+                attemptToDemoteAll = [(var, ofst) for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList) for ofst in range(0, -config.offsetsPerDemotedVariable, -1) if (var != 'X')] + [(var, ofst) for var in self.variableToBitwidthMap if (var[-3:] != "val" and var not in self.demotedVarsList) for ofst in range(0, -9, -1) if (var == 'X')]
+
+                processStart = (len(attemptToDemoteAll) * self.mpi_rank) // self.mpi_size
+                processEnd = (len(attemptToDemoteAll) * (1 + self.mpi_rank)) // self.mpi_size
+                attemptToDemote = [attemptToDemoteAll[i] for i in range(processStart, processEnd)]
 
                 #//numCodes = config.offsetsPerDemotedVariable * len(attemptToDemote) + ((9 - config.offsetsPerDemotedVariable) if 'X' in attemptToDemote else 0)
                 # 9 offsets tried for X while 'offsetsPerDemotedVariable' tried for other variables.
@@ -548,6 +554,7 @@ class Main:
                     lastVarIndex = (totalSize * (i + 1)) // numBatches
                     demoteBatch = [attemptToDemote[i] for i in range(firstVarIndex, lastVarIndex)]
                     numCodes = len(demoteBatch)
+
                     # 9 offsets tried for X while 'config.offsetsPerDemotedVariable' tried for other variables.
 
                     self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, -1 if len(demoteBatch) > 0 else 0, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
@@ -567,7 +574,9 @@ class Main:
                         for key in self.demotedVarsList:
                             demotedVarsOffsets[key] = self.demotedVarsOffsets[key]
 
-                        contentToCodeIdMap[tuple(demotedVarsList)] = {}
+                        if tuple(demotedVarsList) not in contentToCodeIdMap:
+                            contentToCodeIdMap[tuple(demotedVarsList)] = {}
+
                         # We try out multiple offsets for each variable to find best scale assignment for each variable.
                         codeId += 1
                         for k in demotedVarsList:
@@ -589,6 +598,7 @@ class Main:
 
                 print("Stage III finished in time: %f seconds" % (endTime - startTime))
 
+                # print(self.varDemoteDetails)
 
                 startTime = time.time()
 
@@ -615,7 +625,12 @@ class Main:
                     if not variableInMap:
                         sortedVars2.append((demoteVars, offset))
 
-                sortedVars = sortedVars1 + sortedVars2
+                allSortedVars = sortedVars1 + sortedVars2
+                processStart = (len(allSortedVars) * self.mpi_rank) // self.mpi_size
+                processEnd = (len(allSortedVars) * (1 + self.mpi_rank)) // self.mpi_size
+                sortedVars = [allSortedVars[i] for i in range(processStart, processEnd)]
+                totalSize = len(sortedVars)
+
 
                 self.varDemoteDetails = []
                 demotedVarsOffsets = dict(self.demotedVarsOffsets)
@@ -631,6 +646,8 @@ class Main:
                     firstVarIndex = (totalSize * i) // numBatches
                     lastVarIndex = (totalSize * (i+1)) // numBatches
                     demoteBatch = [sortedVars[i] for i in range(firstVarIndex, lastVarIndex)]
+
+                    # print(demoteBatch)
 
                     self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, -1 if len(attemptToDemote) > 0 else 0, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
                     contentToCodeIdMap = {}
@@ -660,6 +677,10 @@ class Main:
 
                 # The following for loop controls how many variables are actually demoted in the final output code, which has
                 # as many variables as possible in 8-bits, while ensuring accuracy drop compared to floating point is reasonable:
+
+                # print(self.varDemoteDetails)
+                # print(self.flAccuracy)
+
                 okToDemote = ()
                 acceptedAcc = lastStageAcc
                 for ((demotedVars, _), metrics) in self.varDemoteDetails:
@@ -672,8 +693,21 @@ class Main:
                         okToDemote = demotedVars
                         acceptedAcc = acc
 
+                processDemoteStats = demotedVarsListToOffsets.get(okToDemote, {})
+
+                allProcessDemoteStats = MPI.COMM_WORLD.allgather(processDemoteStats)
+                finalDemoteStats = {}
+
+                # print (allProcessDemoteStats)
+
+                for oneOffsets in allProcessDemoteStats:
+                    if len(oneOffsets) > len(finalDemoteStats):
+                        finalDemoteStats = oneOffsets
+
+                # print(finalDemoteStats)
+
                 self.demotedVarsList = [i for i in okToDemote] + [i for i in self.demotedVarsList]
-                self.demotedVarsOffsets.update(demotedVarsListToOffsets.get(okToDemote, {}))
+                self.demotedVarsOffsets.update(finalDemoteStats)
 
                 endTime = time.time()
                 print("Stage IV finished in time: %f seconds" % (endTime - startTime))
@@ -750,6 +784,9 @@ class Main:
 
         # Compile and run code using the best scaling factor.
         if config.vbwEnabled:
+            print(self.variableToBitwidthMap)
+            print(self.demotedVarsList)
+            print(self.demotedVarsOffsets)
             compiled = self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, 0, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
         else:
             compiled = self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, 0)

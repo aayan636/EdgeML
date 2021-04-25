@@ -355,7 +355,7 @@ int main(int argc, char* argv[]) {
 				}
 				// Launching one thread which processes one datapoint.
 				threads.push_back(thread(launchThread, features_size, features_int_copy, features_intV_copy, features_float_copy, counter, vector_float_res.back(), vector_int_res.back(), vector_int_resV.back()));
-				threads.back().join();
+				// threads.back().join();
 			} else if (version == Float) {
 				float_res = new float[numOutputs];
 				seedotFloat(features_float, float_res);
@@ -378,9 +378,9 @@ int main(int argc, char* argv[]) {
 		counter++;
 	}
 
-	// for (int i = 0; i < threads.size(); i++) {
-	// 	threads[i].join();
-	// }
+	for (int i = 0; i < threads.size(); i++) {
+		threads[i].join();
+	}
 
 	float disagreements = 0.0, reduced_disagreements = 0.0;
 
