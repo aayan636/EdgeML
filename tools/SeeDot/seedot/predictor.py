@@ -118,7 +118,7 @@ class Predictor:
     def buildForLinux(self):
         Util.getLogger().debug("Build...")
 
-        args = ["make"]
+        args = ["make", "-j4"]
 
         logFile = os.path.join(self.outputDir, "build.txt")
         with open(logFile, 'w') as file:

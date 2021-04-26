@@ -401,6 +401,8 @@ class Main:
 
         fixedPointCounter = 0
         while True:
+
+            startTime = time.time()
             # STAGE I exploration.
             print("Stage I Exploration: Determining scale for input \'X\'...")
             fixedPointCounter += 1
@@ -444,6 +446,10 @@ class Main:
 
             # Ignored.
             self.partialCompile(config.Encoding.fixed, config.Target.x86, lowestValidScale, True, None, -1, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
+
+            endTime = time.time()
+
+            print("Stage I finished in time: %f seconds" % (endTime - startTime))
 
             startTime = time.time()
 
@@ -629,17 +635,29 @@ class Main:
                 processStart = (len(allSortedVars) * self.mpi_rank) // self.mpi_size
                 processEnd = (len(allSortedVars) * (1 + self.mpi_rank)) // self.mpi_size
                 sortedVars = [allSortedVars[i] for i in range(processStart, processEnd)]
+                prevSortedVars = [allSortedVars[i] for i in range(0, processStart)]
                 totalSize = len(sortedVars)
+
+                # print(sortedVars)
 
 
                 self.varDemoteDetails = []
                 demotedVarsOffsets = dict(self.demotedVarsOffsets)
                 demotedVarsList = list(self.demotedVarsList)
+                newbitwidths = dict(self.variableToBitwidthMap)
                 demotedVarsListToOffsets = {}
 
                 # Knowing the accuracy when each single variable is demoted to 8-bits one at a time, we proceed to cumulatively
                 # demoting all of them one after the other ensuring accuracy of target code does not fall below a threshold. The
                 # following for loop controls generation of inference codes.
+                for (demoteVars, offset) in prevSortedVars:
+                    for var in demoteVars:
+                        if var not in self.demotedVarsList:
+                            newbitwidths[var] = config.wordLength // 2
+                            demotedVarsOffsets[var] = offset
+                        if var not in demotedVarsList:
+                            demotedVarsList.append(var)
+
                 for i in tqdm(range(numBatches)):
                     Util.getLogger().info("=====\nBatch %i out of %d\n=====\n" %(i + 1, numBatches))
 
@@ -654,7 +672,6 @@ class Main:
                     codeId = 0
                     numCodes = len(demoteBatch)
                     for (demoteVars, offset) in demoteBatch:
-                        newbitwidths = dict(self.variableToBitwidthMap)
                         for var in demoteVars:
                             if var not in self.demotedVarsList:
                                 newbitwidths[var] = config.wordLength // 2
@@ -750,9 +767,16 @@ class Main:
         print("Performing Exploration...")
         print("-------------------------\n")
 
+        startTime = time.time()
+
         # Generate input files for training dataset.
         res = self.convert(config.Encoding.fixed,
                            config.DatasetType.training, config.Target.x86)
+
+        endTime = time.time()
+
+        print("Fixed point conversion finished in %f seconds" % (endTime - startTime))
+
         if res == False:
             return False
 
@@ -872,7 +896,15 @@ class Main:
 
     def runForFixed(self):
         # Collect runtime profile.
+
+        startTime = time.time()
+
         res = self.collectProfileData()
+
+        endTime = time.time()
+
+        print("Profile data collection stage finished in %f seconds" %(endTime - startTime))
+
         if res == False:
             return False
 
@@ -882,7 +914,14 @@ class Main:
             if res == False:
                 return False
 
+        startTime = time.time()
+
         res = self.runOnTestingDataset()
+
+        endTime = time.time()
+
+        print("Running on testing dataset stage finished in %f seconds" %(endTime - startTime))
+
         if res == False:
             return False
         else:
