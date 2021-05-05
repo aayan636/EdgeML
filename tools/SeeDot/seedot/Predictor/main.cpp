@@ -240,8 +240,8 @@ int main(int argc, char* argv[]) {
 	MYINT*** features_intV_copy;
 
     int maxThreads = omp_get_max_threads();
-    string line1[maxThreads];
-    string line2[maxThreads];
+    string *line1 = new string[maxThreads];
+    string *line2 = new string[maxThreads];
     int counter = 0;
 
 	if (version == Float) {
@@ -393,6 +393,8 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    delete[] line1;
+    delete[] line2;
 
 	float disagreements = 0.0, reduced_disagreements = 0.0;
 
