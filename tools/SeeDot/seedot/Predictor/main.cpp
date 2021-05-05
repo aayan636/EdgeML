@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <thread>
 #include <algorithm>
+#include <omp.h>
 
 #include "datatypes.h"
 #include "predictors.h"
@@ -238,149 +239,160 @@ int main(int argc, char* argv[]) {
 
 	MYINT*** features_intV_copy;
 
-	string line1, line2;
-	int counter = 0;
+    int maxThreads = omp_get_max_threads();
+    string line1[maxThreads];
+    string line2[maxThreads];
+    int counter = 0;
 
 	if (version == Float) {
 		profilingEnabled = true;
 	}
 
+    omp_lock_t* fileLock = (omp_lock_t*)malloc(sizeof(omp_lock_t));
+    omp_init_lock(fileLock);
+
 	// Each iteration takes care of one datapoint.
-	while (getline(featuresFile, line1) && getline(lablesFile, line2)) {
-		// Read the feature vector and class ID.
-		vector<string> features = getFeatures(line1);
-		vector<string> labelString = getLabel(line2);
-		int32_t* labelInt = new int32_t[numOutputs];
-		float* labelFloat = new float[numOutputs];
+    #pragma omp parallel
+    {
+        while (1) {
+            int tnum = omp_get_thread_num();
+            omp_set_lock(fileLock);
+            if (getline(featuresFile, line1[tnum]) && getline(lablesFile, line2[tnum])) {
+                omp_unset_lock(fileLock);
+                // Read the feature vector and class ID.
+                vector<string> features = getFeatures(line1);
+                vector<string> labelString = getLabel(line2);
+                int32_t* labelInt = new int32_t[numOutputs];
+                float* labelFloat = new float[numOutputs];
 
-		if (problem == Classification) {
-			for (int i = 0; i < numOutputs; i++) {
-				labelInt[i] = atoi(labelString[i].c_str());
-			}
-		} else if (problem == Regression) {
-			for (int i = 0; i < numOutputs; i++) {
-				labelFloat[i] = atof(labelString[i].c_str());
-			}
-		}
+                if (problem == Classification) {
+                    for (int i = 0; i < numOutputs; i++) {
+                        labelInt[i] = atoi(labelString[i].c_str());
+                    }
+                } else if (problem == Regression) {
+                    for (int i = 0; i < numOutputs; i++) {
+                        labelFloat[i] = atof(labelString[i].c_str());
+                    }
+                }
 
-		// Allocate memory to store the feature vector as arrays.
-		if (alloc == false) {
-			features_size = (int)features.size();
+                // Allocate memory to store the feature vector as arrays.
+                if (alloc == false) {
+                    features_size = (int)features.size();
 
-			features_int = new MYINT* [features_size];
-			for (int i = 0; i < features_size; i++) {
-				features_int[i] = new MYINT[1];
-			}
+                    features_int = new MYINT* [features_size];
+                    for (int i = 0; i < features_size; i++) {
+                        features_int[i] = new MYINT[1];
+                    }
 
-			for (int i = 0; i < switches; i++) {
-				features_intV[i] = new MYINT* [features_size];
-				for (int j = 0; j < features_size; j++) {
-					features_intV[i][j] = new MYINT[1];
-				}
-			}
+                    for (int i = 0; i < switches; i++) {
+                        features_intV[i] = new MYINT* [features_size];
+                        for (int j = 0; j < features_size; j++) {
+                            features_intV[i][j] = new MYINT[1];
+                        }
+                    }
 
-			features_float = new float* [features_size];
-			for (int i = 0; i < features_size; i++) {
-				features_float[i] = new float[1];
-			}
+                    features_float = new float* [features_size];
+                    for (int i = 0; i < features_size; i++) {
+                        features_float[i] = new float[1];
+                    }
 
-			alloc = true;
-		}
+                    alloc = true;
+                }
 
-		// Populate the array using the feature vector.
-		if (debugMode || version == Fixed) {
-			populateFixedVector(features_int, features, scaleForX);
-			for (int i = 0; i < switches; i++) {
-				populateFixedVector(features_intV[i], features, scalesForX[i]);
-			}
-			populateFloatVector(features_float, features);
-		} else {
-			populateFloatVector(features_float, features);
-		}
+                // Populate the array using the feature vector.
+                if (debugMode || version == Fixed) {
+                    populateFixedVector(features_int, features, scaleForX);
+                    for (int i = 0; i < switches; i++) {
+                        populateFixedVector(features_intV[i], features, scalesForX[i]);
+                    }
+                    populateFloatVector(features_float, features);
+                } else {
+                    populateFloatVector(features_float, features);
+                }
 
-		// Invoke the predictor function.
-		int* fixed_res = NULL;
-		float* float_res = NULL;
-		vector <int> resV(switches, -1);
+                // Invoke the predictor function.
+                int* fixed_res = NULL;
+                float* float_res = NULL;
+                vector <int> resV(switches, -1);
 
-		if (debugMode) {
-			float_res = new float[numOutputs];
-			seedotFloat(features_float, float_res);
-			fixed_res = new int32_t[numOutputs];
-			seedotFixed(features_int, fixed_res);
-			//debug();
-			vector_float_res.push_back(float_res);
-			vector_int_res.push_back(fixed_res);
-			if (problem == Classification) {
-				labelsInt.push_back(labelInt);
-			} else if (problem == Regression) {
-				labelsFloat.push_back(labelFloat);
-			}
-			vector_int_resV.push_back(NULL);
-		} else {
-			// There are several codes generated which are built simultaneously.
-			if (version == Fixed) {
-				vector_float_res.push_back(new float[numOutputs]);
-				vector_int_res.push_back(new int32_t[numOutputs]);
-				// Populating labels for each generated code.
-				if (problem == Classification) {
-					labelsInt.push_back(labelInt);
-				} else if (problem == Regression) {
-					labelsFloat.push_back(labelFloat);
-				}
-				int** switchRes = new int* [switches];
-				// Instantiating vectors for storing inference results for each generated code.
-				for (int i = 0; i < switches; i++) {
-					switchRes[i] = new int[numOutputs];
-				}
-				vector_int_resV.push_back(switchRes);
-				// Instantiating vectors for storing features, integer and float.
-				MYINT** features_int_copy = new MYINT* [features_size];
-				for (int i = 0; i < features_size; i++) {
-					features_int_copy[i] = new MYINT[1];
-					features_int_copy[i][0] = features_int[i][0];
-				}
-				float** features_float_copy = new float* [features_size];
-				for (int i = 0; i < features_size; i++) {
-					features_float_copy[i] = new float[1];
-					features_float_copy[i][0] = features_float[i][0];
-				}
-				features_intV_copy = new MYINT** [switches];
-				for (int j = 0; j < switches; j++) {
-					features_intV_copy[j] = new MYINT* [features_size];
-					for (int i = 0; i < features_size; i++) {
-						features_intV_copy[j][i] = new MYINT[1];
-						features_intV_copy[j][i][0] = features_intV[j][i][0];
-					}
-				}
-				// Launching one thread which processes one datapoint.
-				threads.push_back(thread(launchThread, features_size, features_int_copy, features_intV_copy, features_float_copy, counter, vector_float_res.back(), vector_int_res.back(), vector_int_resV.back()));
-				// threads.back().join();
-			} else if (version == Float) {
-				float_res = new float[numOutputs];
-				seedotFloat(features_float, float_res);
-				vector_float_res.push_back(float_res);
-				vector_int_res.push_back(new int[numOutputs]);
-				if (problem == Classification) {
-					labelsInt.push_back(labelInt);
-				} else if (problem == Regression) {
-					labelsFloat.push_back(labelFloat);
-				}
-				vector_int_resV.push_back(NULL);
-			}
-		}
+                if (debugMode) {
+                    float_res = new float[numOutputs];
+                    seedotFloat(features_float, float_res);
+                    fixed_res = new int32_t[numOutputs];
+                    seedotFixed(features_int, fixed_res);
+                    //debug();
+                    vector_float_res.push_back(float_res);
+                    vector_int_res.push_back(fixed_res);
+                    if (problem == Classification) {
+                        labelsInt.push_back(labelInt);
+                    } else if (problem == Regression) {
+                        labelsFloat.push_back(labelFloat);
+                    }
+                    vector_int_resV.push_back(NULL);
+                } else {
+                    // There are several codes generated which are built simultaneously.
+                    if (version == Fixed) {
+                        vector_float_res.push_back(new float[numOutputs]);
+                        vector_int_res.push_back(new int32_t[numOutputs]);
+                        // Populating labels for each generated code.
+                        if (problem == Classification) {
+                            labelsInt.push_back(labelInt);
+                        } else if (problem == Regression) {
+                            labelsFloat.push_back(labelFloat);
+                        }
+                        int** switchRes = new int* [switches];
+                        // Instantiating vectors for storing inference results for each generated code.
+                        for (int i = 0; i < switches; i++) {
+                            switchRes[i] = new int[numOutputs];
+                        }
+                        vector_int_resV.push_back(switchRes);
+                        // Instantiating vectors for storing features, integer and float.
+                        MYINT** features_int_copy = new MYINT* [features_size];
+                        for (int i = 0; i < features_size; i++) {
+                            features_int_copy[i] = new MYINT[1];
+                            features_int_copy[i][0] = features_int[i][0];
+                        }
+                        float** features_float_copy = new float* [features_size];
+                        for (int i = 0; i < features_size; i++) {
+                            features_float_copy[i] = new float[1];
+                            features_float_copy[i][0] = features_float[i][0];
+                        }
+                        features_intV_copy = new MYINT** [switches];
+                        for (int j = 0; j < switches; j++) {
+                            features_intV_copy[j] = new MYINT* [features_size];
+                            for (int i = 0; i < features_size; i++) {
+                                features_intV_copy[j][i] = new MYINT[1];
+                                features_intV_copy[j][i][0] = features_intV[j][i][0];
+                            }
+                        }
+                        // Launching one thread which processes one datapoint.
+                        launchThread(features_size, features_int_copy, features_intV_copy, features_float_copy, counter, vector_float_res.back(), vector_int_res.back(), vector_int_resV.back());
+                    } else if (version == Float) {
+                        float_res = new float[numOutputs];
+                        seedotFloat(features_float, float_res);
+                        vector_float_res.push_back(float_res);
+                        vector_int_res.push_back(new int[numOutputs]);
+                        if (problem == Classification) {
+                            labelsInt.push_back(labelInt);
+                        } else if (problem == Regression) {
+                            labelsFloat.push_back(labelFloat);
+                        }
+                        vector_int_resV.push_back(NULL);
+                    }
+                }
 
-		if (!logProgramOutput) {
-			output << "Inputs handled = " << counter + 1 << endl;
-		}
+                if (!logProgramOutput) {
+                    output << "Inputs handled = " << counter + 1 << endl;
+                }
 
-		flushProfile();
-		counter++;
-	}
-
-	for (int i = 0; i < threads.size(); i++) {
-		threads[i].join();
-	}
+                flushProfile();
+                counter++;
+            } else {
+                omp_unset_lock(fileLock);
+                break;
+            }
+        }
+    }
 
 	float disagreements = 0.0, reduced_disagreements = 0.0;
 
