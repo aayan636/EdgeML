@@ -156,6 +156,16 @@ def matShape(mat):
 def listRange(list):
     return min(list), max(list)
 
+def setMpiParams(mpi_rank, mpi_size):
+    Config.mpi_rank = mpi_rank
+    Config.mpi_size = mpi_size
+
+def getMpiRank():
+    return Config.mpi_rank
+
+def getMpiSize():
+    return Config.mpi_size
+
 def readXandY(useTrainingSet=False, numOutputs=1):
     train_ext = os.path.splitext(Config.trainingFile)[1]
     test_ext = os.path.splitext(Config.testingFile)[1]
@@ -301,13 +311,24 @@ def writeMatToFile(mat, fileName: str, delimiter):
     m, n = matShape(mat)
     _, formatSpecifier = getDataType(mat[0][0])
 
-    with open(fileName, 'w') as file:
-        for i in range(m):
-            for j in range(n):
-                file.write(formatSpecifier % mat[i][j])
-                if j != (n - 1):
-                    file.write(delimiter)
-            file.write("\n")
+    if getEncoding() == config.Encoding.floatt:
+        startIndex = int((getMpiRank() * m) / getMpiSize())
+        endIndex = int(((getMpiRank()+1) * m) / getMpiSize())
+        with open(fileName, 'w') as file:
+            for i in range(startIndex, endIndex):
+                for j in range(n):
+                    file.write(formatSpecifier % mat[i][j])
+                    if j != (n - 1):
+                        file.write(delimiter)
+                file.write("\n")
+    else:
+        with open(fileName, 'w') as file:
+            for i in range(m):
+                for j in range(n):
+                    file.write(formatSpecifier % mat[i][j])
+                    if j != (n - 1):
+                        file.write(delimiter)
+                file.write("\n")
 
 def writeMatAsArray(mat, name: str, fileName: str, shapeStr=None, bw=None):
     m, n = matShape(mat)

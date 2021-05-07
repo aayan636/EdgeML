@@ -16,6 +16,7 @@ import seedot.compiler.ir.irUtil as IRUtil
 import seedot.compiler.type as Type
 from seedot.util import *
 from seedot.writer import Writer
+import seedot.config as config
 
 import time
 
@@ -75,8 +76,12 @@ class X86(CodegenBase):
         self.out.printf('#include "profile.h"\n', indent=True)
         self.out.printf('#include "library_%s.h"\n' %
                         (getEncoding()), indent=True)
-        self.out.printf('#include "../../temp/Predictor/model_%s.h"\n' %
-                        (getEncoding()), indent=True)
+        if getEncoding() == config.Encoding.fixed:
+            self.out.printf('#include "../../temp/Predictor/model_%s.h"\n' %
+                            (getEncoding()), indent=True)
+        else:
+            self.out.printf('#include "model_%s.h"\n' %
+                            (getEncoding()), indent=True)
         # self.out.printf('#include "vars_%s.h"\n\n' %
         #                 (getEncoding()), indent=True)
         self.out.printf('using namespace std;\n', indent=True)

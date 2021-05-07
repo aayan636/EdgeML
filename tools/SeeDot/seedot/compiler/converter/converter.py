@@ -15,11 +15,13 @@ Main file which sets the configurations and creates the corresponding object.
 
 class Converter:
 
-    def __init__(self, algo, encoding, datasetType, target, source, datasetOutputDir, outputDir, varsForBitwidth={}, allScales={}, numOutputs=1, biasShifts={}, scaleForY=None):
+    def __init__(self, mpi_rank, mpi_size, algo, encoding, datasetType, target, source, datasetOutputDir, outputDir, varsForBitwidth={}, allScales={}, numOutputs=1, biasShifts={}, scaleForY=None):
         setAlgo(algo)
         setEncoding(encoding)
         setDatasetType(datasetType)
         setTarget(target)
+
+        setMpiParams(mpi_rank, mpi_size)
 
         # Set output directories.
         setDatasetOutputDir(datasetOutputDir)

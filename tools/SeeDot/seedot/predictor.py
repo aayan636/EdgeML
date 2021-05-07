@@ -118,7 +118,7 @@ class Predictor:
     def buildForLinux(self):
         Util.getLogger().debug("Build...")
 
-        args = ["make", "-j4"]
+        args = ["make"]
 
         logFile = os.path.join(self.outputDir, "build.txt")
         with open(logFile, 'w') as file:
@@ -179,6 +179,7 @@ class Predictor:
         exeFile = os.path.join("./Predictor")
         args = [exeFile, self.encoding, self.datasetType, self.problemType, str(self.numOutputs), str(self.scaleForX), str(self.scaleForY)]
 
+
         if len(self.scalesForX) > 0:
             assert len(self.scalesForX) == max(list(self.scalesForX.keys())), "Malformed array scalesForX"
         if len(self.scalesForY) > 0:
@@ -188,6 +189,10 @@ class Predictor:
         args = args + [str(len(self.scalesForY))]
         args = args + [str(self.scalesForX[i+1]) for i in range(len(self.scalesForX))]
         args = args + [str(self.scalesForY[i+1]) for i in range(len(self.scalesForY))]
+        if self.encoding == config.Encoding.floatt:
+            args = args + ["input/"]
+        else:
+            args = args + ["../../temp/Predictor/input/"]
 
         logFile = os.path.join(self.outputDir, "exec.txt")
         with open(logFile, 'w') as file:

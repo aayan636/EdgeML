@@ -237,7 +237,7 @@ class Main:
         Util.getLogger().debug("Generating input files for %s %s dataset..." %
               (encoding, datasetType))
 
-        if self.mpi_rank == 0:
+        if encoding == config.Encoding.floatt or self.mpi_rank == 0:
 
             # Create output dirs.
             if target == config.Target.arduino:
@@ -247,8 +247,12 @@ class Main:
                 outputDir = os.path.join(config.outdir, "input")
                 datasetOutputDir = outputDir
             elif target == config.Target.x86:
-                outputDir = os.path.join(config.globalTempdir, "Predictor")
-                datasetOutputDir = os.path.join(config.globalTempdir, "Predictor", "input")
+                if encoding == config.Encoding.floatt:
+                    outputDir = os.path.join(config.tempdir, "Predictor")
+                    datasetOutputDir = os.path.join(config.tempdir, "Predictor", "input")
+                else:
+                    outputDir = os.path.join(config.globalTempdir, "Predictor")
+                    datasetOutputDir = os.path.join(config.globalTempdir, "Predictor", "input")
             else:
                 assert False
 
@@ -261,7 +265,7 @@ class Main:
                 varsForBitwidth = dict(varsForBitwidth)
                 for var in demotedVarsOffsets:
                     varsForBitwidth[var] = config.wordLength // 2
-                obj = Converter(self.algo, encoding, datasetType, target, self.source,
+                obj = Converter(self.mpi_rank, self.mpi_size, self.algo, encoding, datasetType, target, self.source,
                                 datasetOutputDir, outputDir, varsForBitwidth, self.allScales, self.numOutputs, self.biasShifts, self.scaleForY if hasattr(self, "scaleForY") else None)
                 obj.setInput(inputFile, self.modelDir,
                              self.trainingFile, self.testingFile)

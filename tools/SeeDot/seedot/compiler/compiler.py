@@ -33,6 +33,8 @@ import seedot.config as config
 
 import numpy as np
 
+from mpi4py import MPI
+
 '''
 The Compiler class reads in the input code, converts it first into an AST, and subsequently into an IR which
 contains a sequence of function calls (which are implemented by hand in a library). The IR is fed into the 
@@ -41,6 +43,8 @@ desired target codegen, which outputs the C/C++ code which can be run on the tar
 
 
 class Compiler:
+
+    dataDrivenScales = {}
 
     def __init__(self, algo, encoding, target, inputFile, outputDir, profileLogFile, maxScale, source, outputLogFile, generateAllFiles=True, id=None, printSwitch=-1, substitutions={}, scaleForX=None, variableToBitwidthMap={}, sparseMatrixSizes={}, demotedVarsList=[], demotedVarsOffsets={}, paramInNativeBitwidth=True):
         if os.path.isfile(inputFile) == False:
@@ -182,15 +186,25 @@ class Compiler:
 
     # The floating point code is run on the training dataset and the ranges of all variables are read to compute the scale.
     def readDataDrivenScales(self):
-        tempScales = {}
-        error = 0.01
-        with open(config.tempdir + '/Predictor/dump.profile', 'r') as f:
-            for line in f:
-                entries = line.strip().split(",")
-                var, m, M = entries
-                m, M = float(m), float(M)
-                tempScales[var] = util.computeScalingFactor(max(abs(m) + error, abs(M) + error))
-        return tempScales
+        if len(Compiler.dataDrivenScales) == 0:
+            tempScales = {}
+            error = 0.01
+            with open(config.tempdir + '/Predictor/dump.profile', 'r') as f:
+                for line in f:
+                    entries = line.strip().split(",")
+                    var, m, M = entries
+                    m, M = float(m), float(M)
+                    tempScales[var] = util.computeScalingFactor(max(abs(m) + error, abs(M) + error))
+
+            allTempScales = MPI.COMM_WORLD.allgather(tempScales)
+
+            for mp in allTempScales:
+                for key in mp:
+                    if key not in Compiler.dataDrivenScales:
+                        Compiler.dataDrivenScales[key] = mp[key]
+                    else:
+                        Compiler.dataDrivenScales[key] = max(Compiler.dataDrivenScales[key], mp[key])
+        return Compiler.dataDrivenScales
 
     # Post-processing of live ranges to adjust for different scoping level at the first invocation and at the last invocation.
     def adjustLiveRanges(self, oldRanges, depthData):

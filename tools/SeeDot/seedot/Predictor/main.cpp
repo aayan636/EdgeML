@@ -201,7 +201,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Reading the dataset.
-	string inputDir = "../../temp/Predictor/input/";
+	string inputDir = argv[2*numScales + 8];
 
 	ifstream featuresFile(inputDir + "X.csv");
 	ifstream lablesFile(inputDir + "Y.csv");
