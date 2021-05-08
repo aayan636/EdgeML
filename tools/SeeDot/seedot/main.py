@@ -108,6 +108,7 @@ class Main:
             # In operations like WX + B, B is mostly used once in the code. So all the fixed point computations are clubbed into one.
         self.varSizes = {}
             # Map from a variable to number of elements it holds. Populated in floating point mode.
+        self.varsToProfile = []
 
     # This function is invoked right at the beginning for moving around files into the working directory.
     def setup(self):
@@ -213,6 +214,7 @@ class Main:
             self.variableSubstitutions = obj.substitutions
             self.variableToBitwidthMap = dict.fromkeys(obj.independentVars, config.wordLength)
             self.varSizes = obj.varSizes
+            self.varsToProfile = obj.independentVars
 
         self.problemType = obj.problemType
         if id is None:
@@ -292,7 +294,7 @@ class Main:
         os.chdir(os.path.join(config.tempdir, "Predictor"))
 
         obj = Predictor(self.algo, encoding, datasetType,
-                        outputDir, self.scaleForX, self.scalesForX, self.scaleForY, self.scalesForY, self.problemType, self.numOutputs)
+                        outputDir, self.scaleForX, self.scalesForX, self.scaleForY, self.scalesForY, self.problemType, self.numOutputs, self.varsToProfile)
         execMap = obj.run()
 
         os.chdir(curDir)

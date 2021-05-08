@@ -20,7 +20,7 @@ The accuracy and other statistics are written to the output file specified.
 
 class Predictor:
 
-    def __init__(self, algo, encoding, datasetType, outputDir, scaleForX, scalesForX, scaleForY, scalesForY, problemType, numOutputs):
+    def __init__(self, algo, encoding, datasetType, outputDir, scaleForX, scalesForX, scaleForY, scalesForY, problemType, numOutputs, varsToProfile):
         self.algo, self.encoding, self.datasetType = algo, encoding, datasetType
 
         self.outputDir = outputDir
@@ -33,6 +33,8 @@ class Predictor:
 
         self.problemType = problemType
         self.numOutputs = numOutputs
+
+        self.varsToProfile = varsToProfile
 
         self.genHeaderFile()
 
@@ -193,6 +195,12 @@ class Predictor:
             args = args + ["input/"]
         else:
             args = args + ["../../temp/Predictor/input/"]
+
+        args = args + [len(self.varsToProfile)]
+        if self.encoding == config.Encoding.floatt:
+            args = args + self.varsToProfile
+
+        print(args)
 
         logFile = os.path.join(self.outputDir, "exec.txt")
         with open(logFile, 'w') as file:

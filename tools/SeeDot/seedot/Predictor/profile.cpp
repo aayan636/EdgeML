@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <vector>
 #include <cfloat>
+#include <omp.h>
 
 #include "datatypes.h"
 #include "profile.h"
@@ -17,16 +18,6 @@ using namespace std;
 
 float m_all, M_all;
 float m_exp, M_exp;
-
-void initializeProfiling() {
-	m_all = numeric_limits<float>::max();
-	M_all = -numeric_limits<float>::max();
-
-	m_exp = numeric_limits<float>::max();
-	M_exp = -numeric_limits<float>::max();
-
-	return;
-}
 
 void updateRange(float x) {
 	if (x < m_all) {
@@ -68,6 +59,29 @@ unordered_map<string, float> max_temp;
 unordered_map<string, vector<float>> all_values;
 unordered_map<string, pair<float, float>> statistics;
 
+unordered_map<string, omp_lock_t> locks;
+
+void initializeProfiling(vector<string> profiledVars) {
+	m_all = numeric_limits<float>::max();
+	M_all = -numeric_limits<float>::max();
+
+	m_exp = numeric_limits<float>::max();
+	M_exp = -numeric_limits<float>::max();
+
+	for (auto name : profiledVars) {
+		locks[name] = omp_lock_t();
+	}
+
+	for (auto name : profiledVars) {
+		omp_init_lock(&locks[name]);
+		min_temp[name] = FLT_MAX;
+		max_temp[name] = -FLT_MAX;
+		all_values[name] = vector<float>();
+	}
+
+	return;
+}
+
 bool range_exceeded = false;
 
 void dumpProfile() {
@@ -85,6 +99,10 @@ void dumpProfile() {
 		min_i++;
 	}
 	outfile.close();
+
+	for (auto it = locks.begin(); it != locks.end(); it++) {
+		omp_destroy_lock(&(it->second));
+	}
 }
 
 void flushProfile() {
@@ -118,6 +136,7 @@ void checkRange2(float* A, int I, int J) {
 	if (!profilingEnabled) {
 		return;
 	}
+	#pragma omp critical
 	for (int i = 0; i < I; i++) {
 		for (int j = 0; j < J; j++) {
 			if (fabs(A[i * J + j]) >= 32) {
@@ -131,60 +150,54 @@ void Profile4(float* A, int I, int J, int K, int L, string name) {
 	if (!profilingEnabled) {
 		return;
 	}
-	if (min_temp.find(name) == min_temp.end()) {
-		min_temp[name] = FLT_MAX;
-		max_temp[name] = -FLT_MAX;
-		all_values[name] = vector<float>();
-	}
+	omp_set_lock(&locks[name]);
+	// #pragma omp critical
 	for (int i = 0; i < I; i++) {
 		for (int j = 0; j < J; j++) {
 			for (int k = 0; k < K; k++) {
 				for (int l = 0; l < L; l++) {
 					min_temp[name] = min_temp[name] < A[i * J * K * L + j * K * L + k * L + l] ? min_temp[name] : A[i * J * K * L + j * K * L + k * L + l];
 					max_temp[name] = max_temp[name] > A[i * J * K * L + j * K * L + k * L + l] ? max_temp[name] : A[i * J * K * L + j * K * L + k * L + l];
-					all_values[name].push_back(A[i * J * K * L + j * K * L + k * L + l]);
+					// all_values[name].push_back(A[i * J * K * L + j * K * L + k * L + l]);
 				}
 			}
 		}
 	}
+	omp_unset_lock(&locks[name]);
 }
 
 void Profile3(float* A, int I, int J, int K, string name) {
 	if (!profilingEnabled) {
 		return;
 	}
-	if (min_temp.find(name) == min_temp.end()) {
-		min_temp[name] = FLT_MAX;
-		max_temp[name] = -FLT_MAX;
-		all_values[name] = vector<float>();
-	}
+	omp_set_lock(&locks[name]);
+	// #pragma omp critical
 	for (int i = 0; i < I; i++) {
 		for (int j = 0; j < J; j++) {
 			for (int k = 0; k < K; k++) {
 				min_temp[name] = min_temp[name] < A[i * J * K + j * K + k] ? min_temp[name] : A[i * J * K + j * K + k];
 				max_temp[name] = max_temp[name] > A[i * J * K + j * K + k] ? max_temp[name] : A[i * J * K + j * K + k];
-				all_values[name].push_back(A[i * J * K + j * K + k]);
+				// all_values[name].push_back(A[i * J * K + j * K + k]);
 			}
 		}
 	}
+	omp_unset_lock(&locks[name]);
 }
 
 void Profile2(float* A, int I, int J, string name) {
 	if (!profilingEnabled) {
 		return;
 	}
-	if (min_temp.find(name) == min_temp.end()) {
-		min_temp[name] = FLT_MAX;
-		max_temp[name] = -FLT_MAX;
-		all_values[name] = vector<float>();
-	}
+	omp_set_lock(&locks[name]);
+	// #pragma omp critical
 	for (int i = 0; i < I; i++) {
 		for (int j = 0; j < J; j++) {
 			min_temp[name] = min_temp[name] < A[i * J + j] ? min_temp[name] : A[i * J + j];
 			max_temp[name] = max_temp[name] > A[i * J + j] ? max_temp[name] : A[i * J + j];
-			all_values[name].push_back(A[i * J + j]);
+			// all_values[name].push_back(A[i * J + j]);
 		}
 	}
+	omp_unset_lock(&locks[name]);
 }
 
 void diff(float* A, MYINT* B, MYINT scale, MYINT I, MYINT J) {

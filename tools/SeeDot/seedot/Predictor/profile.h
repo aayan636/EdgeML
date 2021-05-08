@@ -2,10 +2,11 @@
 // Licensed under the MIT license.
 
 #pragma once
+#include <vector>
 
 // Used by old SeeDot, invoked before the inference code is executed, it is used to
 // set the variables used for profiling to default values.
-void initializeProfiling();
+void initializeProfiling(std::vector<std::string> profiledVars);
 
 // Methods used by old SeeDot to capture the range of a variable in floating point mode.
 // Used only for exponentiation in old SeeDot.

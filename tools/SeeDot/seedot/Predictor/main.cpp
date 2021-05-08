@@ -8,7 +8,8 @@
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
-#include <thread>
+// #include <thread>
+#include <omp.h>
 #include <algorithm>
 
 #include "datatypes.h"
@@ -203,6 +204,12 @@ int main(int argc, char* argv[]) {
 	// Reading the dataset.
 	string inputDir = argv[2*numScales + 8];
 
+	int numProfiled = atoi(argv[2*numScales + 9]);
+	vector<string> profiledVariables;
+	for (int i = 0; i < numProfiled; i++) {
+		profiledVariables.push_back(argv[2*numScales + 9 + i]);
+	}
+
 	ifstream featuresFile(inputDir + "X.csv");
 	ifstream lablesFile(inputDir + "Y.csv");
 
@@ -226,7 +233,7 @@ int main(int argc, char* argv[]) {
 	float** features_float = NULL;
 
 	// Initialize variables used for profiling.
-	initializeProfiling();
+	initializeProfiling(profiledVariables);
 
 	// Following variables are used for storing the results of the inference.
 	vector<float*> vector_float_res;
@@ -234,9 +241,9 @@ int main(int argc, char* argv[]) {
 	vector<int32_t**> vector_int_resV;
 	vector<int32_t*> labelsInt;
 	vector<float*> labelsFloat;
-	vector<thread> threads;
+	//vector<thread> threads;
 
-	MYINT*** features_intV_copy;
+	// MYINT*** features_intV_copy;
 
 	string line1, line2;
 	int counter = 0;
@@ -245,11 +252,20 @@ int main(int argc, char* argv[]) {
 		profilingEnabled = true;
 	}
 
-	// Each iteration takes care of one datapoint.
+	vector<string> featuresLines;
+	vector<string> labelsLines;
+
 	while (getline(featuresFile, line1) && getline(lablesFile, line2)) {
+		featuresLines.push_back(line1);
+		labelsLines.push_back(line2);
+	}
+
+	// Each iteration takes care of one datapoint.
+	#pragma omp parallel for firstprivate(alloc, features_int, features_float, features_intV)
+	for (int i = 0; i < featuresLines.size(); i++) {
 		// Read the feature vector and class ID.
-		vector<string> features = getFeatures(line1);
-		vector<string> labelString = getLabel(line2);
+		vector<string> features = getFeatures(featuresLines[i]);
+		vector<string> labelString = getLabel(labelsLines[i]);
 		int32_t* labelInt = new int32_t[numOutputs];
 		float* labelFloat = new float[numOutputs];
 
@@ -264,38 +280,41 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Allocate memory to store the feature vector as arrays.
-		if (alloc == false) {
-			features_size = (int)features.size();
+		#pragma omp critical
+		{		
+			if (alloc == false) {
+				features_size = (int)features.size();
 
-			features_int = new MYINT* [features_size];
-			for (int i = 0; i < features_size; i++) {
-				features_int[i] = new MYINT[1];
-			}
-
-			for (int i = 0; i < switches; i++) {
-				features_intV[i] = new MYINT* [features_size];
-				for (int j = 0; j < features_size; j++) {
-					features_intV[i][j] = new MYINT[1];
+				features_int = new MYINT* [features_size];
+				for (int i = 0; i < features_size; i++) {
+					features_int[i] = new MYINT[1];
 				}
-			}
 
-			features_float = new float* [features_size];
-			for (int i = 0; i < features_size; i++) {
-				features_float[i] = new float[1];
-			}
+				for (int i = 0; i < switches; i++) {
+					features_intV[i] = new MYINT* [features_size];
+					for (int j = 0; j < features_size; j++) {
+						features_intV[i][j] = new MYINT[1];
+					}
+				}
 
-			alloc = true;
-		}
+				features_float = new float* [features_size];
+				for (int i = 0; i < features_size; i++) {
+					features_float[i] = new float[1];
+				}
+
+				alloc = true;
+			}
 
 		// Populate the array using the feature vector.
-		if (debugMode || version == Fixed) {
-			populateFixedVector(features_int, features, scaleForX);
-			for (int i = 0; i < switches; i++) {
-				populateFixedVector(features_intV[i], features, scalesForX[i]);
+			if (debugMode || version == Fixed) {
+				populateFixedVector(features_int, features, scaleForX);
+				for (int i = 0; i < switches; i++) {
+					populateFixedVector(features_intV[i], features, scalesForX[i]);
+				}
+				populateFloatVector(features_float, features);
+			} else {
+				populateFloatVector(features_float, features);
 			}
-			populateFloatVector(features_float, features);
-		} else {
-			populateFloatVector(features_float, features);
 		}
 
 		// Invoke the predictor function.
@@ -304,6 +323,7 @@ int main(int argc, char* argv[]) {
 		vector <int> resV(switches, -1);
 
 		if (debugMode) {
+			throw "Unwanted state, should not be reached";
 			float_res = new float[numOutputs];
 			seedotFloat(features_float, float_res);
 			fixed_res = new int32_t[numOutputs];
@@ -320,20 +340,29 @@ int main(int argc, char* argv[]) {
 		} else {
 			// There are several codes generated which are built simultaneously.
 			if (version == Fixed) {
-				vector_float_res.push_back(new float[numOutputs]);
-				vector_int_res.push_back(new int32_t[numOutputs]);
-				// Populating labels for each generated code.
-				if (problem == Classification) {
-					labelsInt.push_back(labelInt);
-				} else if (problem == Regression) {
-					labelsFloat.push_back(labelFloat);
-				}
 				int** switchRes = new int* [switches];
-				// Instantiating vectors for storing inference results for each generated code.
-				for (int i = 0; i < switches; i++) {
-					switchRes[i] = new int[numOutputs];
+				float* fb;
+				int32_t* ib;
+				int32_t** ivb;
+				#pragma omp critical
+				{
+					vector_float_res.push_back(new float[numOutputs]);
+					vector_int_res.push_back(new int32_t[numOutputs]);
+					// Populating labels for each generated code.
+					if (problem == Classification) {
+						labelsInt.push_back(labelInt);
+					} else if (problem == Regression) {
+						labelsFloat.push_back(labelFloat);
+					}
+					// Instantiating vectors for storing inference results for each generated code.
+					for (int i = 0; i < switches; i++) {
+						switchRes[i] = new int[numOutputs];
+					}
+					vector_int_resV.push_back(switchRes);
+					fb = vector_float_res.back();
+					ib = vector_int_res.back();
+					ivb = vector_int_resV.back();
 				}
-				vector_int_resV.push_back(switchRes);
 				// Instantiating vectors for storing features, integer and float.
 				MYINT** features_int_copy = new MYINT* [features_size];
 				for (int i = 0; i < features_size; i++) {
@@ -345,7 +374,7 @@ int main(int argc, char* argv[]) {
 					features_float_copy[i] = new float[1];
 					features_float_copy[i][0] = features_float[i][0];
 				}
-				features_intV_copy = new MYINT** [switches];
+				MYINT*** features_intV_copy = new MYINT** [switches];
 				for (int j = 0; j < switches; j++) {
 					features_intV_copy[j] = new MYINT* [features_size];
 					for (int i = 0; i < features_size; i++) {
@@ -354,19 +383,23 @@ int main(int argc, char* argv[]) {
 					}
 				}
 				// Launching one thread which processes one datapoint.
-				threads.push_back(thread(launchThread, features_size, features_int_copy, features_intV_copy, features_float_copy, counter, vector_float_res.back(), vector_int_res.back(), vector_int_resV.back()));
+				//threads.push_back(thread(launchThread, features_size, features_int_copy, features_intV_copy, features_float_copy, counter, vector_float_res.back(), vector_int_res.back(), vector_int_resV.back()));
+				launchThread(features_size, features_int_copy, features_intV_copy, features_float_copy, counter, fb, ib, ivb);
 				// threads.back().join();
 			} else if (version == Float) {
 				float_res = new float[numOutputs];
 				seedotFloat(features_float, float_res);
-				vector_float_res.push_back(float_res);
-				vector_int_res.push_back(new int[numOutputs]);
-				if (problem == Classification) {
-					labelsInt.push_back(labelInt);
-				} else if (problem == Regression) {
-					labelsFloat.push_back(labelFloat);
+				#pragma omp critical 
+				{
+					vector_float_res.push_back(float_res);
+					vector_int_res.push_back(new int[numOutputs]);
+					if (problem == Classification) {
+						labelsInt.push_back(labelInt);
+					} else if (problem == Regression) {
+						labelsFloat.push_back(labelFloat);
+					}
+					vector_int_resV.push_back(NULL);
 				}
-				vector_int_resV.push_back(NULL);
 			}
 		}
 
@@ -374,13 +407,16 @@ int main(int argc, char* argv[]) {
 			output << "Inputs handled = " << counter + 1 << endl;
 		}
 
-		flushProfile();
-		counter++;
+		#pragma omp critical
+		{
+			flushProfile();
+			counter++;
+		}
 	}
 
-	for (int i = 0; i < threads.size(); i++) {
-		threads[i].join();
-	}
+	// for (int i = 0; i < threads.size(); i++) {
+	// 	threads[i].join();
+	// }
 
 	float disagreements = 0.0, reduced_disagreements = 0.0;
 
@@ -492,23 +528,23 @@ int main(int argc, char* argv[]) {
 
 	trace.close();
 
-	// Deallocate memory.
-	for (int i = 0; i < features_size; i++) {
-		delete features_int[i];
-	}
-	delete[] features_int;
+	// // Deallocate memory.
+	// for (int i = 0; i < features_size; i++) {
+	// 	delete features_int[i];
+	// }
+	// delete[] features_int;
 
-	for (int i = 0; i < features_size; i++) {
-		delete features_float[i];
-	}
-	delete[] features_float;
+	// for (int i = 0; i < features_size; i++) {
+	// 	delete features_float[i];
+	// }
+	// delete[] features_float;
 
-	for (int i = 0; i < switches; i++) {
-		for (int j = 0; j < features_size; j++) {
-			delete features_intV[i][j];
-		}
-		delete[] features_intV[i];
-	}
+	// for (int i = 0; i < switches; i++) {
+	// 	for (int j = 0; j < features_size; j++) {
+	// 		delete features_intV[i][j];
+	// 	}
+	// 	delete[] features_intV[i];
+	// }
 
 	float accuracy = (float)correct / total * 100.0f;
 

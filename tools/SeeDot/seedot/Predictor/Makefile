@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 CC=g++
-CFLAGS=-w -Wno-narrowing -p -g -fPIC -O3 -std=c++11 -pthread
+CFLAGS=-w -Wno-narrowing -p -g -fPIC -O3 -std=c++11 -fopenmp
 
 PREDICTOR_INCLUDES=datatypes.h \
                    library_fixed.h \
