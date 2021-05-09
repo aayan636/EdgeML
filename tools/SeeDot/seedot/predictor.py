@@ -196,9 +196,11 @@ class Predictor:
         else:
             args = args + ["../../temp/Predictor/input/"]
 
-        args = args + [len(self.varsToProfile)]
         if self.encoding == config.Encoding.floatt:
+            args = args + [str(len(self.varsToProfile))]
             args = args + self.varsToProfile
+        else:
+            args = args + ["0"]
 
         print(args)
 
