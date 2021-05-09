@@ -8,6 +8,8 @@ import subprocess
 import seedot.config as config
 import seedot.util as Util
 
+import time
+
 '''
 This file contains the code to generate datatypes.h which 
 controls the execution of CPP codes. 
@@ -120,12 +122,15 @@ class Predictor:
     def buildForLinux(self):
         Util.getLogger().debug("Build...")
 
-        args = ["make"]
+        args = ["make", "-j2"]
 
         logFile = os.path.join(self.outputDir, "build.txt")
+        startTime = time.time()
         with open(logFile, 'w') as file:
             process = subprocess.call(args, stdout=file, stderr=subprocess.STDOUT)
+        endTime = time.time()
 
+        print("Make command finished in %f seconds" %(endTime - startTime))
         if process == 1:
             Util.getLogger().debug("FAILED!!\n\n")
             return False
@@ -202,11 +207,16 @@ class Predictor:
         else:
             args = args + ["0"]
 
-        print(args)
+        # print(args)
 
         logFile = os.path.join(self.outputDir, "exec.txt")
+
+        startTime = time.time()
         with open(logFile, 'w') as file:
             process = subprocess.call(args, stdout=file, stderr=subprocess.STDOUT)
+        endTime = time.time()
+
+        print("C++ execution finished in %f seconds" %(endTime - startTime))
 
         if process == 1:
             Util.getLogger().debug("FAILED!!\n\n")

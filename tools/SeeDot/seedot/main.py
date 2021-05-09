@@ -814,9 +814,9 @@ class Main:
 
         # Compile and run code using the best scaling factor.
         if config.vbwEnabled:
-            print(self.variableToBitwidthMap)
-            print(self.demotedVarsList)
-            print(self.demotedVarsOffsets)
+            # print(self.variableToBitwidthMap)
+            # print(self.demotedVarsList)
+            # print(self.demotedVarsOffsets)
             compiled = self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, 0, dict(self.variableToBitwidthMap), list(self.demotedVarsList), dict(self.demotedVarsOffsets))
         else:
             compiled = self.partialCompile(config.Encoding.fixed, config.Target.x86, self.sf, True, None, 0)
