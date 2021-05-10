@@ -556,7 +556,7 @@ class Main:
                 redBatchSize = np.max((batchSize, 16)) #/ config.offsetsPerDemotedVariable
 
                 totalSize = len(attemptToDemote)
-                numBatches = int(np.ceil(totalSize / redBatchSize))
+                numBatches = 1 #int(np.ceil(totalSize / redBatchSize))
 
                 self.varDemoteDetails = []
                 for i in tqdm(range(numBatches)):
@@ -619,7 +619,7 @@ class Main:
                 # Again, we compute only a limited number of inference codes per generated C++ so as to not bloat up the memory usage of the compiler.
                 # redBatchSize *= config.offsetsPerDemotedVariable
                 totalSize = len(self.varDemoteDetails)
-                numBatches = int(np.ceil(totalSize / redBatchSize))
+                numBatches = 1 #int(np.ceil(totalSize / redBatchSize))
 
                 sortedVars1 = []
                 sortedVars2 = []
