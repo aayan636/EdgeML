@@ -47,6 +47,8 @@ class Predictor:
             with open("datatypes.h", 'w') as file:
                 file.write("#pragma once\n\n")
 
+                file.write("#include <cstdint>\n\n")
+
                 if config.wordLength == 8:
                     file.write("#define INT8\n")
                     file.write("typedef int8_t MYINT;\n\n")
@@ -122,7 +124,11 @@ class Predictor:
     def buildForLinux(self):
         Util.getLogger().debug("Build...")
 
-        args = ["make", "-j2"]
+        ompThreads = os.getenv('OMP_NUM_THREADS')
+        if ompThreads is None:
+            ompThreads = 272
+
+        args = ["make", "-j%d"%ompThreads]
 
         logFile = os.path.join(self.outputDir, "build.txt")
         startTime = time.time()
@@ -207,7 +213,7 @@ class Predictor:
         else:
             args = args + ["0"]
 
-        # print(args)
+        print(args)
 
         logFile = os.path.join(self.outputDir, "exec.txt")
 

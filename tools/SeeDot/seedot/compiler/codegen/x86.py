@@ -25,35 +25,35 @@ class X86(CodegenBase):
 
     def __init__(self, outputDir, generateAllFiles, printSwitch, idStr, paramInNativeBitwidth, decls, localDecls, scales, intvs, cnsts, expTables, globalVars, internalVars, floatConstants, substitutions, demotedVarsOffsets, varsForBitwidth, varLiveIntervals, notScratch, coLocatedVariables):
         super().__init__(decls, localDecls, scales, intvs, cnsts, expTables, globalVars, internalVars, floatConstants, substitutions, demotedVarsOffsets, varsForBitwidth, varLiveIntervals, notScratch, coLocatedVariables)
+        self.idStr = idStr
         self.outputDir = outputDir
-        cppFile = os.path.join(self.outputDir, "seedot_" + getEncoding() + ".cpp")
+        cppFile = os.path.join(self.outputDir, "seedot_" + getEncoding() + (self.idStr if self.idStr is not None else "") + ".cpp")
         # For exploration, multiple inference codes are written into one output C++ file.
-        if generateAllFiles:
-            self.out = Writer(cppFile)
-        else:
-            getLogger().info("Opening file to output cpp code: ID" + idStr)
-            for i in range(3):
-                getLogger().debug("Try %d" % (i+1))
-                try:
-                    self.out = Writer(cppFile, "a")
-                except:
-                    getLogger().exception("OS prevented file from opening. Sleeping for %d seconds" % (i+1))
-                    time.sleep(i+1)
-                else:
-                    getLogger().debug("Opened")
-                    break
+        # if generateAllFiles:
+        self.out = Writer(cppFile)
+        # else:
+        #     getLogger().info("Opening file to output cpp code: ID" + idStr)
+        #     for i in range(3):
+        #         getLogger().debug("Try %d" % (i+1))
+        #         try:
+        #             self.out = Writer(cppFile, "a")
+        #         except:
+        #             getLogger().exception("OS prevented file from opening. Sleeping for %d seconds" % (i+1))
+        #             time.sleep(i+1)
+        #         else:
+        #             getLogger().debug("Opened")
+        #             break
 
         self.generateAllFiles = generateAllFiles
-        self.idStr = idStr
         self.printSwitch = printSwitch
 
         self.paramInNativeBitwidth = paramInNativeBitwidth
 
     def printPrefix(self):
-        if self.generateAllFiles:
-            self.printCincludes()
+        # if self.generateAllFiles:
+        self.printCincludes()
 
-            self.printExpTables()
+        self.printExpTables()
 
         self.printCHeader()
 
@@ -319,18 +319,107 @@ class X86(CodegenBase):
 
         if forFixed():
             if (int(self.printSwitch) if isInt(self.printSwitch) else -2) > -1:
-                self.out.printf("const int switches = %d;\n" % (int(self.printSwitch)), indent = True)
-                self.out.printf('void seedotFixedSwitch(int i, MYINT **X_temp, int32_t* res) {\n', indent=True)
-                self.out.increaseIndent()
-                self.out.printf('switch(i) {\n', indent = True)
-                self.out.increaseIndent()
+                f = Writer(os.path.join(self.outputDir, "predictors.h"))
+                f.printf("#pragma once\n\n")
+                f.printf("extern const int switches;\n\n")
+                f.printf("void seedotFixed(MYINT** X, int32_t* res);\n")
+                f.printf("void seedotFloat(float** X, float* res);\n")
                 for i in range(int(self.printSwitch)):
-                    self.out.printf('case %d: seedotFixed%d(X_temp, res); return;\n' % (i,i+1), indent = True)
-                self.out.printf('default: res[0] = -1; return;\n', indent = True)
-                self.out.decreaseIndent()
-                self.out.printf('}\n', indent=True)
-                self.out.decreaseIndent()
-                self.out.printf('}\n', indent=True)
+                    f.printf("void seedotFixed%d(MYINT** X, int32_t* res);\n", i+1)
+                f.close()
+
+                f = Writer(os.path.join(self.outputDir, "launchThread.cpp"))
+                f.printf('#include "launchThread.h"\n')
+                f.printf('#include "predictors.h"\n')
+                f.printf('#include "datatypes.h"\n')
+                f.printf('// Multi-threading is used to speed up exploration.\n')
+                f.printf('// Each thread, which invokes the following method, is responsible for taking in one datapoint\n')
+                f.printf('// and running it through all the generated codes.\n')
+                f.printf('// Number of threads generated equals the number of datapoints in the given dataset.\n')
+                f.printf('void launchThread(int features_size, MYINT** features_int, MYINT*** features_intV, float** features_float, int counter, float* float_res, int* res, int** resV) {\n')
+                f.printf('  seedotFixed(features_int, res);\n')
+                f.printf('  seedotFloat(features_float, float_res);\n')
+
+                for i in range(int(self.printSwitch)):
+                    f.printf('  seedotFixed%d(features_intV[%d], resV[%d]);\n', i+1, i, i)
+
+                f.printf('  for (int i = 0; i < features_size; i++) {\n')
+                f.printf('      delete features_int[i];\n')
+                f.printf('      delete features_float[i];\n')
+                f.printf('      for (int j = 0; j < switches; j++) {\n')
+                f.printf('        delete features_intV[j][i];\n')
+                f.printf('      }\n')
+                f.printf('  }\n')
+                f.printf('  delete[] features_int;\n')
+                f.printf('  delete[] features_float;\n')
+                f.printf('  for (int j = 0; j < switches; j++) {\n')
+                f.printf('    delete[] features_intV[j];\n')
+                f.printf('  }\n')
+                f.printf('  delete[] features_intV;\n')
+                f.printf('}\n')
+
+                f.printf('void seedotFloatWrap(float** X, float* res) {\n')
+                f.printf('  seedotFloat(X, res);\n')
+                f.printf('}\n')
+
+                f.printf('int getSwitches() {\n')
+                f.printf('    return switches;\n')
+                f.printf('}\n')
+
+                f.close()
+                
+                f = Writer(os.path.join(self.outputDir, "Makefile"))
+
+                f.printf('CC=g++\n')
+                f.printf('CFLAGS=-w -Wno-narrowing -p -g -fPIC -O3 -std=c++11 -fopenmp\n')
+                f.printf('PREDICTOR_INCLUDES=datatypes.h library_fixed.h library_float.h model_fixed.h model_float.h profile.h \n')
+                f.printf('PREDICTOR_OBJS=debug.o library_fixed.o library_float.o main.o profile.o seedot_float.o launchThread.o seedot_fixed.o ')
+                for i in range(int(self.printSwitch)):
+                    f.printf('seedot_fixed%d.o ', i+1)
+                f.printf('\n')
+
+                f.printf('all: Predictor\n')
+
+                f.printf('clean: \n')
+                f.printf('\trm -f *.o\n')
+                f.printf('\trm -f Predictor\n')
+
+                f.printf('Predictor: $(PREDICTOR_OBJS)\n')
+                f.printf('\t$(CC) -o $@ $^ $(CFLAGS)\n')
+                f.printf('debug.o: debug.cpp $(PREDICTOR_INCLUDES)\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('library_fixed.o: library_fixed.cpp $(PREDICTOR_INCLUDES)\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('library_float.o: library_float.cpp $(PREDICTOR_INCLUDES)\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('main.o: main.cpp $(PREDICTOR_INCLUDES) launchThread.h\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('launchThread.o: launchThread.cpp launchThread.h predictors.h datatypes.h\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('profile.o: profile.cpp $(PREDICTOR_INCLUDES)\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('seedot_float.o: seedot_float.cpp $(PREDICTOR_INCLUDES) predictors.h\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+                f.printf('seedot_fixed.o: seedot_fixed.cpp $(PREDICTOR_INCLUDES) predictors.h\n')
+                f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+
+                for i in range(int(self.printSwitch)):
+                    f.printf('seedot_fixed%d.o: seedot_fixed%d.cpp $(PREDICTOR_INCLUDES) predictors.h\n', i+1, i+1)
+                    f.printf('\t$(CC) -c -o $@ $(CFLAGS) $<\n')
+
+                f.close()
+                self.out.printf("const int switches = %d;\n" % (int(self.printSwitch)), indent = True)
+                # self.out.printf('void seedotFixedSwitch(int i, MYINT **X_temp, int32_t* res) {\n', indent=True)
+                # self.out.increaseIndent()
+                # self.out.printf('switch(i) {\n', indent = True)
+                # self.out.increaseIndent()
+                # for i in range(int(self.printSwitch)):
+                #     self.out.printf('case %d: seedotFixed%d(X_temp, res); return;\n' % (i,i+1), indent = True)
+                # self.out.printf('default: res[0] = -1; return;\n', indent = True)
+                # self.out.decreaseIndent()
+                # self.out.printf('}\n', indent=True)
+                # self.out.decreaseIndent()
+                # self.out.printf('}\n', indent=True)
 
         getLogger().debug("Closing file after outputting cpp code: ID " + self.idStr)
         self.out.close()

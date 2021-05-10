@@ -3,8 +3,10 @@
 
 #pragma once
 
+extern const int switches;
+
 void seedotFixed(MYINT** X, int32_t* res);
 void seedotFloat(float** X, float* res);
-void seedotFixedSwitch(int i, MYINT** X, int32_t* res);
+// void seedotFixedSwitch(int i, MYINT** X, int32_t* res);
 
-extern const int switches;
+
