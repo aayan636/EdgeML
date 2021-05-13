@@ -120,6 +120,12 @@ void populateFloatVector(float** features_float, vector<string> features) {
 
 
 int main(int argc, char* argv[]) {
+
+	double start; 
+double end; 
+start = omp_get_wtime(); 
+
+
 	float epsilon = 0.00001;
 	if (argc == 1) {
 		cout << "No arguments supplied" << endl;
@@ -230,32 +236,65 @@ int main(int argc, char* argv[]) {
 	vector<string> featuresLines;
 	vector<string> labelsLines;
 
+// end = omp_get_wtime(); 
+// printf("Work took %f seconds\n", end - start);
 	while (getline(featuresFile, line1) && getline(lablesFile, line2)) {
 		featuresLines.push_back(line1);
 		labelsLines.push_back(line2);
-	}
 
-	// Each iteration takes care of one datapoint.
-	#pragma omp parallel for firstprivate(alloc, features_int, features_float, features_intV)
-	for (int i = 0; i < featuresLines.size(); i++) {
-		// Read the feature vector and class ID.
-		vector<string> features = getFeatures(featuresLines[i]);
-		vector<string> labelString = getLabel(labelsLines[i]);
 		int32_t* labelInt = new int32_t[numOutputs];
 		float* labelFloat = new float[numOutputs];
 
 		if (problem == Classification) {
 			for (int i = 0; i < numOutputs; i++) {
-				labelInt[i] = atoi(labelString[i].c_str());
+				labelInt[i] = atoi(line2.c_str());
 			}
 		} else if (problem == Regression) {
 			for (int i = 0; i < numOutputs; i++) {
-				labelFloat[i] = atof(labelString[i].c_str());
+				labelFloat[i] = atof(line2.c_str());
 			}
 		}
 
+		if (problem == Classification) {
+			labelsInt.push_back(labelInt);
+		} else if (problem == Regression) {
+			labelsFloat.push_back(labelFloat);
+		}
+
+		if (version == Float) {
+			vector_float_res.push_back(NULL);
+			vector_int_res.push_back(new int[numOutputs]);
+			vector_int_resV.push_back(NULL);
+		}
+
+		if (version == Fixed) {
+
+
+			int** switchRes = new int* [getSwitches()];
+			vector_float_res.push_back(new float[numOutputs]);
+			vector_int_res.push_back(new int32_t[numOutputs]);
+			// Populating labels for each generated code.
+			
+			// Instantiating vectors for storing inference results for each generated code.
+			for (int i = 0; i < getSwitches(); i++) {
+				switchRes[i] = new int[numOutputs];
+			}
+			vector_int_resV.push_back(switchRes);
+		}
+	}
+
+// end = omp_get_wtime(); 
+// printf("Work took %f seconds\n", end - start);
+
+	// Each iteration takes care of one datapoint.
+	#pragma omp parallel for firstprivate(alloc, features_int, features_float, features_intV, features_size)
+	for (int i = 0; i < featuresLines.size(); i++) {
+		// Read the feature vector and class ID.
+		vector<string> features = getFeatures(featuresLines[i]);
+		// vector<string> labelString = getLabel(labelsLines[i]);
+
 		// Allocate memory to store the feature vector as arrays.
-		#pragma omp critical
+		// #pragma omp critical
 		{		
 			if (alloc == false) {
 				features_size = (int)features.size();
@@ -315,28 +354,15 @@ int main(int argc, char* argv[]) {
 		} else {
 			// There are several codes generated which are built simultaneously.
 			if (version == Fixed) {
-				int** switchRes = new int* [getSwitches()];
 				float* fb;
 				int32_t* ib;
 				int32_t** ivb;
-				#pragma omp critical
+				// #pragma omp critical
 				{
-					vector_float_res.push_back(new float[numOutputs]);
-					vector_int_res.push_back(new int32_t[numOutputs]);
-					// Populating labels for each generated code.
-					if (problem == Classification) {
-						labelsInt.push_back(labelInt);
-					} else if (problem == Regression) {
-						labelsFloat.push_back(labelFloat);
-					}
-					// Instantiating vectors for storing inference results for each generated code.
-					for (int i = 0; i < getSwitches(); i++) {
-						switchRes[i] = new int[numOutputs];
-					}
-					vector_int_resV.push_back(switchRes);
-					fb = vector_float_res.back();
-					ib = vector_int_res.back();
-					ivb = vector_int_resV.back();
+					
+					fb = vector_float_res[i];
+					ib = vector_int_res[i];
+					ivb = vector_int_resV[i];
 				}
 				// Instantiating vectors for storing features, integer and float.
 				MYINT** features_int_copy = new MYINT* [features_size];
@@ -364,16 +390,16 @@ int main(int argc, char* argv[]) {
 			} else if (version == Float) {
 				float_res = new float[numOutputs];
 				seedotFloatWrap(features_float, float_res);
-				#pragma omp critical 
+				// #pragma omp critical 
 				{
-					vector_float_res.push_back(float_res);
-					vector_int_res.push_back(new int[numOutputs]);
-					if (problem == Classification) {
-						labelsInt.push_back(labelInt);
-					} else if (problem == Regression) {
-						labelsFloat.push_back(labelFloat);
-					}
-					vector_int_resV.push_back(NULL);
+					vector_float_res[i] = float_res;
+					//vector_int_res(new int[numOutputs]);
+					// if (problem == Classification) {
+					// 	labelsInt.push_back(labelInt);
+					// } else if (problem == Regression) {
+					// 	labelsFloat.push_back(labelFloat);
+					// }
+					//vector_int_resV.push_back(NULL);
 				}
 			}
 		}
@@ -392,6 +418,9 @@ int main(int argc, char* argv[]) {
 	// for (int i = 0; i < threads.size(); i++) {
 	// 	threads[i].join();
 	// }
+
+// 	end = omp_get_wtime(); 
+// printf("Work took %f seconds\n", end - start);
 
 	float disagreements = 0.0, reduced_disagreements = 0.0;
 
@@ -432,7 +461,7 @@ int main(int argc, char* argv[]) {
 					correct++;
 				} else {
 					if (logProgramOutput) {
-						output << "Main: Incorrect prediction for input " << total + 1 << " element " << j << ". Predicted " << res << " Expected " << labelsInt[i][j] << endl;
+						//output << "Main: Incorrect prediction for input " << total + 1 << " element " << j << ". Predicted " << res << " Expected " << labelsInt[i][j] << endl;
 					}
 				}
 				total++;
@@ -453,7 +482,7 @@ int main(int argc, char* argv[]) {
 						correctV[k]++;
 					} else {
 						if (logProgramOutput) {
-							output << "Sub "<< k <<": Incorrect prediction for input " << total + 1 << " element " << j << ". Predicted " << resV[k][j] << " Expected " << labelsInt[i][j] << endl;
+							//output << "Sub "<< k <<": Incorrect prediction for input " << total + 1 << " element " << j << ". Predicted " << resV[k][j] << " Expected " << labelsInt[i][j] << endl;
 						}
 					}
 					totalV[k]++;
@@ -500,6 +529,9 @@ int main(int argc, char* argv[]) {
 
 		trace << endl;
 	}
+
+// 	end = omp_get_wtime(); 
+// printf("Work took %f seconds\n", end - start);
 
 	trace.close();
 
@@ -584,6 +616,9 @@ int main(int argc, char* argv[]) {
 	if (datasetType == Training) {
 		dumpRange(outputDir + "/profile.txt");
 	}
+
+// 	end = omp_get_wtime(); 
+// printf("Work took %f seconds\n", end - start);
 
 	return 0;
 }

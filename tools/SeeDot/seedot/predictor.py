@@ -22,6 +22,8 @@ The accuracy and other statistics are written to the output file specified.
 
 class Predictor:
 
+    stage=0
+
     def __init__(self, algo, encoding, datasetType, outputDir, scaleForX, scalesForX, scaleForY, scalesForY, problemType, numOutputs, varsToProfile):
         self.algo, self.encoding, self.datasetType = algo, encoding, datasetType
 
@@ -128,7 +130,7 @@ class Predictor:
         if ompThreads is None:
             ompThreads = 272
 
-        args = ["make", "-j%d"%ompThreads]
+        args = ["make", "-j%s"%ompThreads]
 
         logFile = os.path.join(self.outputDir, "build.txt")
         startTime = time.time()
@@ -136,7 +138,7 @@ class Predictor:
             process = subprocess.call(args, stdout=file, stderr=subprocess.STDOUT)
         endTime = time.time()
 
-        print("Make command finished in %f seconds" %(endTime - startTime))
+        print("Make Stage %d command finished in %f seconds" %(Predictor.stage, endTime - startTime))
         if process == 1:
             Util.getLogger().debug("FAILED!!\n\n")
             return False
@@ -222,7 +224,8 @@ class Predictor:
             process = subprocess.call(args, stdout=file, stderr=subprocess.STDOUT)
         endTime = time.time()
 
-        print("C++ execution finished in %f seconds" %(endTime - startTime))
+        print("C++ Stage %d execution finished in %f seconds" %(Predictor.stage, endTime - startTime))
+        Predictor.stage += 1
 
         if process == 1:
             Util.getLogger().debug("FAILED!!\n\n")
